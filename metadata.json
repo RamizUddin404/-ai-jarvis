@@ -1,0 +1,8 @@
+{
+  "name": "Remix Jarvis AI",
+  "description": "Advanced voice-controlled assistant with full device access, powered by Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Jarvis AI</string>
+    <string name="accessibility_service_description">Jarvis AI Accessibility Service allows you to control your device using voice commands.</string>
+    <string name="device_admin_label">J.A.R.V.I.S. Device Administrator</string>
+    <string name="device_admin_description">Grants J.A.R.V.I.S. system administration privileges for screen management, keyguard lock, and continuous automated background operations.</string>
+</resources>

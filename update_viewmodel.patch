@@ -1,0 +1,36 @@
+--- /app/applet/app/src/main/java/com/example/ui/JarvisViewModel.kt
++++ /app/applet/app/src/main/java/com/example/ui/JarvisViewModel.kt
+@@ -10,6 +10,7 @@
+ import com.google.firebase.auth.FirebaseUser
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.stateIn
+ import kotlinx.coroutines.launch
+ 
+ data class JarvisSettings(
+@@ -51,6 +52,14 @@
+     }
+ 
+     private val repository = GeminiRepository()
++    
++    private val database = com.example.data.AppDatabase.getDatabase(application)
++    private val chatRepository = com.example.data.ChatRepository(database.chatDao())
++    val chatHistory: StateFlow<List<com.example.data.ChatEntity>> = chatRepository.allChats
++        .stateIn(
++            scope = viewModelScope,
++            started = kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000),
++            initialValue = emptyList()
++        )
+ 
+     private val _uiState = MutableStateFlow<JarvisUiState>(JarvisUiState.Idle)
+     val uiState: StateFlow<JarvisUiState> = _uiState
+@@ -217,6 +226,9 @@
+                 repository.generateResponse(command)
+             }
+             
++            chatRepository.insertChat(com.example.data.ChatEntity(role = "user", content = command))
++            chatRepository.insertChat(com.example.data.ChatEntity(role = "jarvis", content = response))
++            
+             FirebaseManager.saveUserCommand(command, response)
+             _uiState.value = JarvisUiState.Speaking(response)
+         }
