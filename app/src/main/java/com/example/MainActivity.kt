@@ -42,6 +42,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.SettingsSuggest
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -279,6 +282,7 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
             onToggleTextInput = { viewModel.toggleTextInputMode(it) },
             onToggleWakeWord = { viewModel.toggleWakeWord(it) },
             onToggleDarkMode = { viewModel.toggleDarkMode(it) },
+            onThemeModeChange = { viewModel.updateThemeMode(it) },
             onPlaybackSpeedChange = { viewModel.updateVoicePlaybackSpeed(it) },
             onToggleTts = { viewModel.toggleTts(it) },
             onTogglePersistentBackground = { viewModel.togglePersistentBackground(it) },
@@ -287,8 +291,14 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
     }
 
     val currentBubbleTheme = com.example.ui.theme.JarvisBubbleTheme.fromId(settings.bubbleTheme)
+    val isSystemInDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDarkTheme = when (settings.themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDark
+    }
 
-    MyApplicationTheme(darkTheme = settings.isDarkMode) {
+    MyApplicationTheme(darkTheme = isDarkTheme) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
@@ -891,6 +901,7 @@ fun JarvisSettingsDialog(
     onToggleTextInput: (Boolean) -> Unit,
     onToggleWakeWord: (Boolean) -> Unit,
     onToggleDarkMode: (Boolean) -> Unit,
+    onThemeModeChange: (String) -> Unit = {},
     onPlaybackSpeedChange: (Float) -> Unit,
     onToggleTts: (Boolean) -> Unit,
     onTogglePersistentBackground: (Boolean) -> Unit = {},
@@ -1054,16 +1065,62 @@ fun JarvisSettingsDialog(
 
             Spacer(modifier = Modifier.height(24.dp))
             
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text("Dark Mode", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp)
-                    Text("Toggle elegant dark theme", color = TextSlate, fontSize = 12.sp)
-                }
-                Switch(
-                    checked = settings.isDarkMode,
-                    onCheckedChange = onToggleDarkMode,
-                    colors = SwitchDefaults.colors(checkedThumbColor = CyanJarvis, checkedTrackColor = CyanJarvis.copy(alpha = 0.5f))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "App Theme & Appearance",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
+                Text(
+                    text = "Sync with system appearance settings or lock to dark/light theme",
+                    color = TextSlate,
+                    fontSize = 12.sp
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val themeOptions = listOf(
+                        Triple("system", "System", Icons.Default.SettingsSuggest),
+                        Triple("dark", "Dark", Icons.Default.DarkMode),
+                        Triple("light", "Light", Icons.Default.LightMode)
+                    )
+
+                    themeOptions.forEach { (modeKey, label, icon) ->
+                        val isSelected = settings.themeMode == modeKey
+                        Surface(
+                            onClick = { onThemeModeChange(modeKey) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) CyanJarvis.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, if (isSelected) CyanJarvis else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = if (isSelected) CyanJarvis else TextSlate,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.height(24.dp))

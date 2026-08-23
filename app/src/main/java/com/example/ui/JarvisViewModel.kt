@@ -24,6 +24,7 @@ data class JarvisSettings(
     val wakeWordEnabled: Boolean = false,
     val persistentBackgroundEnabled: Boolean = true,
     val isDarkMode: Boolean = true,
+    val themeMode: String = "system", // "system", "dark", "light"
     val voicePlaybackSpeed: Float = 1.0f,
     val ttsEnabled: Boolean = true,
     val systemPrompt: String = "You are J.A.R.V.I.S., an advanced AI assistant. You have full multilingual capabilities with native support for English, Bangla (বাংলা), and all languages. Always respond in the exact language the user speaks or writes (if the user speaks Bangla, reply in natural, fluent Bangla; if English, reply in English). Provide concise, clear, and professional answers formatted as plain text suitable for a Text-to-Speech engine (no markdown asterisks, bolding, or lists).",
@@ -154,6 +155,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             wakeWordEnabled = settingsPrefs.getBoolean("wake_word_enabled", false),
             persistentBackgroundEnabled = settingsPrefs.getBoolean("persistent_background_enabled", true),
             isDarkMode = settingsPrefs.getBoolean("dark_mode", true),
+            themeMode = settingsPrefs.getString("theme_mode", "system") ?: "system",
             voicePlaybackSpeed = settingsPrefs.getFloat("voice_speed", 1.0f),
             ttsEnabled = settingsPrefs.getBoolean("tts_enabled", true),
             systemPrompt = settingsPrefs.getString("system_prompt", null)
@@ -224,8 +226,19 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleDarkMode(enabled: Boolean) {
-        settingsPrefs.edit().putBoolean("dark_mode", enabled).apply()
-        _settings.value = _settings.value.copy(isDarkMode = enabled)
+        val mode = if (enabled) "dark" else "light"
+        updateThemeMode(mode)
+    }
+
+    fun updateThemeMode(mode: String) {
+        settingsPrefs.edit().putString("theme_mode", mode).apply()
+        val isDark = when (mode) {
+            "dark" -> true
+            "light" -> false
+            else -> true
+        }
+        settingsPrefs.edit().putBoolean("dark_mode", isDark).apply()
+        _settings.value = _settings.value.copy(themeMode = mode, isDarkMode = isDark)
     }
 
     fun updateVoicePlaybackSpeed(speed: Float) {
