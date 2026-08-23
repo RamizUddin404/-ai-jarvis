@@ -286,6 +286,8 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
             onPlaybackSpeedChange = { viewModel.updateVoicePlaybackSpeed(it) },
             onToggleTts = { viewModel.toggleTts(it) },
             onTogglePersistentBackground = { viewModel.togglePersistentBackground(it) },
+            onWaveformStyleChange = { viewModel.updateWaveformStyle(it) },
+            onWaveformPaletteChange = { viewModel.updateWaveformPalette(it) },
             onSystemPromptChange = { viewModel.updateSystemPrompt(it) }
         )
     }
@@ -363,6 +365,25 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
 
                     Spacer(modifier = Modifier.height(6.dp))
                     
+                    val proactiveSuggestions = remember(chatHistory) {
+                        com.example.util.ContextualAwarenessEngine.generateProactiveSuggestions(
+                            context = context,
+                            recentUserMessages = chatHistory.map { it.content }
+                        )
+                    }
+
+                    if (proactiveSuggestions.isNotEmpty()) {
+                        com.example.ui.ProactiveSuggestionsBanner(
+                            suggestions = proactiveSuggestions,
+                            onSuggestionClicked = { suggestion ->
+                                viewModel.processCommand(suggestion.actionPrompt, context)
+                            },
+                            onDismiss = {},
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     Box(modifier = Modifier.weight(1f)) {
                         com.example.ui.JarvisChatList(
                             chatHistory = chatHistory,
@@ -384,6 +405,8 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
                             audioRms = if (audioRms > 0.05f) audioRms else 0.45f,
                             statusMessage = if (uiState is JarvisUiState.Speaking) "GEMINI LIVE VOICE STREAM ACTIVE" else "FORMULATING RESPONSE...",
                             isAiStreaming = true,
+                            waveformStyle = settings.waveformStyle,
+                            waveformPalette = settings.waveformColorPalette,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -910,6 +933,8 @@ fun JarvisSettingsDialog(
     onPlaybackSpeedChange: (Float) -> Unit,
     onToggleTts: (Boolean) -> Unit,
     onTogglePersistentBackground: (Boolean) -> Unit = {},
+    onWaveformStyleChange: (String) -> Unit = {},
+    onWaveformPaletteChange: (String) -> Unit = {},
     onSystemPromptChange: (String) -> Unit
 ) {
     ModalBottomSheet(
@@ -927,6 +952,16 @@ fun JarvisSettingsDialog(
             Text("ADVANCED CONFIGURATION", color = CyanJarvis, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Waveform Visualizer Style & Color Palette Customization
+            com.example.ui.WaveformCustomizationSection(
+                currentStyle = settings.waveformStyle,
+                currentPalette = settings.waveformColorPalette,
+                onStyleSelected = onWaveformStyleChange,
+                onPaletteSelected = onWaveformPaletteChange
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // System Admin & 24/7 Background Execution Controls
             com.example.ui.DeviceAdminAndBackgroundSection(

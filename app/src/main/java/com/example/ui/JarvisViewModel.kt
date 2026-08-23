@@ -31,7 +31,9 @@ data class JarvisSettings(
     val openRouterApiKey: String = "",
     val openRouterModel: String = "openai/gpt-4o-mini",
     val bubbleTheme: String = "arc_reactor",
-    val language: String = "auto"
+    val language: String = "auto",
+    val waveformStyle: String = "wave", // "wave", "bar", "line", "ripple"
+    val waveformColorPalette: String = "cyan" // "cyan", "violet", "emerald", "amber", "monochrome"
 )
 
 class JarvisViewModel(application: Application) : AndroidViewModel(application) {
@@ -163,7 +165,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             openRouterApiKey = settingsPrefs.getString("openrouter_api_key", "") ?: "",
             openRouterModel = settingsPrefs.getString("openrouter_model", "openai/gpt-4o-mini") ?: "openai/gpt-4o-mini",
             bubbleTheme = settingsPrefs.getString("bubble_theme", "arc_reactor") ?: "arc_reactor",
-            language = settingsPrefs.getString("selected_language", "auto") ?: "auto"
+            language = settingsPrefs.getString("selected_language", "auto") ?: "auto",
+            waveformStyle = settingsPrefs.getString("waveform_style", "wave") ?: "wave",
+            waveformColorPalette = settingsPrefs.getString("waveform_palette", "cyan") ?: "cyan"
         )
     )
     val settings: StateFlow<JarvisSettings> = _settings
@@ -213,6 +217,16 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     fun updateBubbleTheme(themeId: String) {
         settingsPrefs.edit().putString("bubble_theme", themeId).apply()
         _settings.value = _settings.value.copy(bubbleTheme = themeId)
+    }
+
+    fun updateWaveformStyle(style: String) {
+        settingsPrefs.edit().putString("waveform_style", style).apply()
+        _settings.value = _settings.value.copy(waveformStyle = style)
+    }
+
+    fun updateWaveformPalette(palette: String) {
+        settingsPrefs.edit().putString("waveform_palette", palette).apply()
+        _settings.value = _settings.value.copy(waveformColorPalette = palette)
     }
 
     fun updateLanguage(languageCode: String) {
@@ -336,9 +350,14 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
                 _apiUsageWarning.value = requestTimestamps.size >= 12
                 
                 incrementApiCallCount()
+                val contextInjection = com.example.util.ContextualAwarenessEngine.buildContextPromptInjection(
+                    recentUserMessages = chatHistory.value.map { it.content }
+                )
+                val enrichedSystemPrompt = "${_settings.value.systemPrompt}\n\n$contextInjection"
+
                 repository.generateResponse(
                     prompt = command,
-                    systemPrompt = _settings.value.systemPrompt,
+                    systemPrompt = enrichedSystemPrompt,
                     userApiKey = _settings.value.openRouterApiKey,
                     userModel = _settings.value.openRouterModel
                 )
