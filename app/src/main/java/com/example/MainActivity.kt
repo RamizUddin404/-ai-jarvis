@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -47,6 +48,8 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -132,6 +135,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        val prefs = getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("is_app_in_foreground", true).apply()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        val prefs = getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("is_app_in_foreground", false).apply()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -204,7 +219,8 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     "com.example.ACTION_WAKE_WORD_DETECTED" -> {
-                        viewModel.startListeningVoice()
+                        // Let SpeechRecognitionService handle recording; no redundant and conflicting local mic initiation needed.
+                        android.util.Log.d("Jarvis", "Wake Word detected, listening via SpeechRecognitionService...")
                     }
                     SpeechRecognitionService.ACTION_SPEECH_RESULT -> {
                         val command = intent.getStringExtra(SpeechRecognitionService.EXTRA_COMMAND)
@@ -221,6 +237,19 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
                             viewModel.stopListening()
                         }
                     }
+                    SpeechRecognitionService.ACTION_SPEECH_PARTIAL_RESULT -> {
+                        val partialText = intent.getStringExtra(SpeechRecognitionService.EXTRA_PARTIAL_RESULT) ?: ""
+                        viewModel.setPartialSpeechText(partialText)
+                    }
+                    SpeechRecognitionService.ACTION_SPEECH_RMS_CHANGED -> {
+                        val rms = intent.getFloatExtra(SpeechRecognitionService.EXTRA_RMS_DB, 0f)
+                        viewModel.setAudioRms(rms)
+                    }
+                    SpeechRecognitionService.ACTION_SPEECH_ERROR -> {
+                        val errMsg = intent.getStringExtra(SpeechRecognitionService.EXTRA_ERROR_MESSAGE) ?: "Voice error"
+                        android.util.Log.w("Jarvis", "Speech Recognition Service error: $errMsg")
+                        viewModel.stopListening()
+                    }
                 }
             }
         }
@@ -232,6 +261,7 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
             addAction(SpeechRecognitionService.ACTION_SPEECH_RESULT)
             addAction(SpeechRecognitionService.ACTION_SPEECH_STATE_CHANGED)
             addAction(SpeechRecognitionService.ACTION_SPEECH_PARTIAL_RESULT)
+            addAction(SpeechRecognitionService.ACTION_SPEECH_RMS_CHANGED)
             addAction(SpeechRecognitionService.ACTION_SPEECH_ERROR)
         }
         ContextCompat.registerReceiver(
@@ -279,33 +309,6 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
         )
     }
 
-    if (showSettings) {
-        JarvisSettingsDialog(
-            settings = settings,
-            onDismiss = { showSettings = false },
-            onOpenRouterApiKeyChange = { viewModel.updateOpenRouterApiKey(it) },
-            onOpenRouterModelChange = { viewModel.updateOpenRouterModel(it) },
-            onTestConnection = { key, model, callback ->
-                viewModel.testOpenRouterConnection(key, model, callback)
-            },
-            onBubbleThemeChange = { viewModel.updateBubbleTheme(it) },
-            onLanguageChange = { viewModel.updateLanguage(it) },
-            onToggleScreenReader = { viewModel.toggleScreenReader(it) },
-            onSensitivityChange = { viewModel.updateSensitivity(it) },
-            onRmsThresholdChange = { viewModel.updateRmsThreshold(it) },
-            onToggleTextInput = { viewModel.toggleTextInputMode(it) },
-            onToggleWakeWord = { viewModel.toggleWakeWord(it) },
-            onToggleDarkMode = { viewModel.toggleDarkMode(it) },
-            onThemeModeChange = { viewModel.updateThemeMode(it) },
-            onPlaybackSpeedChange = { viewModel.updateVoicePlaybackSpeed(it) },
-            onToggleTts = { viewModel.toggleTts(it) },
-            onTogglePersistentBackground = { viewModel.togglePersistentBackground(it) },
-            onWaveformStyleChange = { viewModel.updateWaveformStyle(it) },
-            onWaveformPaletteChange = { viewModel.updateWaveformPalette(it) },
-            onSystemPromptChange = { viewModel.updateSystemPrompt(it) }
-        )
-    }
-
     val currentBubbleTheme = com.example.ui.theme.JarvisBubbleTheme.fromId(settings.bubbleTheme)
     val isSystemInDark = androidx.compose.foundation.isSystemInDarkTheme()
     val isDarkTheme = when (settings.themeMode) {
@@ -315,157 +318,160 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
     }
 
     MyApplicationTheme(darkTheme = isDarkTheme) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = { JarvisHeader(apiUsageWarning = apiUsageWarning, onSettingsClick = { showSettings = true }) },
-            bottomBar = { JarvisFooter() }
-        ) { innerPadding ->
-            val bgColor = MaterialTheme.colorScheme.background
-            Box(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize()
-                    .drawBehind {
-                        drawRect(color = bgColor)
-                    }
-            ) {
-                // Animated Pulsing Futuristic Bubble Themes
-                com.example.ui.AnimatedBubbleBackground(
-                    theme = currentBubbleTheme,
-                    isListening = uiState is JarvisUiState.Listening,
-                    audioRms = audioRms
-                )
-                
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+        val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+        val scope = rememberCoroutineScope()
+
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(
+                    drawerContainerColor = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxHeight().width(320.dp)
                 ) {
-                    // Quick Action & Status Chips (Themes, Language, System Access)
-                    QuickActionBar(
-                        currentTheme = currentBubbleTheme,
-                        currentLanguage = settings.language,
+                    JarvisDrawerContent(
+                        settings = settings,
                         isAccessEnabled = isAccessEnabled,
-                        onThemeClick = { showSettings = true },
-                        onCodeStudioClick = { viewModel.toggleCodeStudioModal(true) },
-                        onLanguageClick = {
-                            val nextLang = when (settings.language) {
-                                "auto" -> "bn-BD"
-                                "bn-BD" -> "en-US"
-                                "en-US" -> "hi-IN"
-                                else -> "auto"
-                            }
-                            viewModel.updateLanguage(nextLang)
+                        apiUsageStats = apiUsageStats,
+                        onResetStats = { viewModel.resetApiUsageStats() },
+                        onOpenRouterApiKeyChange = { viewModel.updateOpenRouterApiKey(it) },
+                        onOpenRouterModelChange = { viewModel.updateOpenRouterModel(it) },
+                        onTestConnection = { key, model, callback ->
+                            viewModel.testOpenRouterConnection(key, model, callback)
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                        onBubbleThemeChange = { viewModel.updateBubbleTheme(it) },
+                        onLanguageChange = { viewModel.updateLanguage(it) },
+                        onToggleScreenReader = { viewModel.toggleScreenReader(it) },
+                        onSensitivityChange = { viewModel.updateSensitivity(it) },
+                        onRmsThresholdChange = { viewModel.updateRmsThreshold(it) },
+                        onToggleTextInput = { viewModel.toggleTextInputMode(it) },
+                        onToggleWakeWord = { viewModel.toggleWakeWord(it) },
+                        onThemeModeChange = { viewModel.updateThemeMode(it) },
+                        onPlaybackSpeedChange = { viewModel.updateVoicePlaybackSpeed(it) },
+                        onToggleTts = { viewModel.toggleTts(it) },
+                        onTogglePersistentBackground = { viewModel.togglePersistentBackground(it) },
+                        onWaveformStyleChange = { viewModel.updateWaveformStyle(it) },
+                        onWaveformPaletteChange = { viewModel.updateWaveformPalette(it) },
+                        onSystemPromptChange = { viewModel.updateSystemPrompt(it) }
                     )
-
-                    if (!isApiKeyConfigured) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        com.example.ui.ApiKeySetupBanner(
-                            onSetupClick = { showSettings = true },
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                    }
-
-                    if (!voicePermissionState.hasRecordAudioPermission || !voicePermissionState.isNetworkOnline) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        com.example.ui.VoicePermissionBanner(
-                            permissionState = voicePermissionState,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    
-                    val proactiveSuggestions = remember(chatHistory) {
-                        com.example.util.ContextualAwarenessEngine.generateProactiveSuggestions(
-                            context = context,
-                            recentUserMessages = chatHistory.map { it.content }
-                        )
-                    }
-
-                    if (proactiveSuggestions.isNotEmpty()) {
-                        com.example.ui.ProactiveSuggestionsBanner(
-                            suggestions = proactiveSuggestions,
-                            onSuggestionClicked = { suggestion ->
-                                viewModel.processCommand(suggestion.actionPrompt, context)
-                            },
-                            onDismiss = {},
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-
-                    Box(modifier = Modifier.weight(1f)) {
-                        com.example.ui.JarvisChatList(
-                            chatHistory = chatHistory,
-                            isThinking = uiState is JarvisUiState.Thinking,
-                            theme = currentBubbleTheme
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    if (uiState is JarvisUiState.Listening) {
-                        com.example.ui.RealtimeListeningWaveform(
-                            audioRms = audioRms,
-                            partialText = partialSpeechText,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    } else if (uiState is JarvisUiState.Speaking || uiState is JarvisUiState.Thinking) {
-                        com.example.ui.GeminiStreamingAudioWaveform(
-                            audioRms = if (audioRms > 0.05f) audioRms else 0.45f,
-                            statusMessage = if (uiState is JarvisUiState.Speaking) "GEMINI LIVE VOICE STREAM ACTIVE" else "FORMULATING RESPONSE...",
-                            isAiStreaming = true,
-                            waveformStyle = settings.waveformStyle,
-                            waveformPalette = settings.waveformColorPalette,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                
-                JarvisControls(
-                    uiState = uiState,
-                    audioRms = audioRms,
-                    isAccessEnabled = isAccessEnabled,
-                    settings = settings,
-                    apiUsageStats = apiUsageStats,
-                    onResetStats = { viewModel.resetApiUsageStats() },
-                    onToggleWakeWord = {
-                        if (!voicePermissionState.hasRecordAudioPermission) {
-                            voicePermissionState.requestPermission()
-                        }
-                        viewModel.toggleWakeWord(!settings.wakeWordEnabled)
-                    },
-                    onCommand = { viewModel.processCommand(it, context) },
-                    onMicClick = {
-                        if (voicePermissionState.hasRecordAudioPermission) {
-                            if (uiState is JarvisUiState.Listening) {
-                                viewModel.stopListeningVoice()
-                            } else {
-                                viewModel.startListeningVoice()
-                            }
-                        } else {
-                            voicePermissionState.requestPermission()
-                        }
-                    }
-                )
+                }
             }
+        ) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = { 
+                    JarvisHeader(
+                        apiUsageWarning = apiUsageWarning, 
+                        onMenuClick = { scope.launch { drawerState.open() } }
+                    ) 
+                },
+                bottomBar = { JarvisFooter() }
+            ) { innerPadding ->
+                val bgColor = MaterialTheme.colorScheme.background
+                Box(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize()
+                        .drawBehind {
+                            drawRect(color = bgColor)
+                        }
+                ) {
+                    // Animated Pulsing Futuristic Bubble Themes
+                    com.example.ui.AnimatedBubbleBackground(
+                        theme = currentBubbleTheme,
+                        isListening = uiState is JarvisUiState.Listening,
+                        audioRms = audioRms
+                    )
+                    
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Large Centered Pulsing Visualizer Core representing JARVIS
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                JarvisVisualizer(
+                                    uiState = uiState,
+                                    audioRms = audioRms,
+                                    modifier = Modifier.size(240.dp)
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                JarvisStatusText(uiState = uiState)
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Waveforms displaying active stream levels
+                        if (uiState is JarvisUiState.Listening) {
+                            com.example.ui.RealtimeListeningWaveform(
+                                audioRms = audioRms,
+                                partialText = partialSpeechText,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        } else if (uiState is JarvisUiState.Speaking || uiState is JarvisUiState.Thinking) {
+                            com.example.ui.GeminiStreamingAudioWaveform(
+                                audioRms = if (audioRms > 0.05f) audioRms else 0.45f,
+                                statusMessage = if (uiState is JarvisUiState.Speaking) "GEMINI LIVE VOICE STREAM ACTIVE" else "FORMULATING RESPONSE...",
+                                isAiStreaming = true,
+                                waveformStyle = settings.waveformStyle,
+                                waveformPalette = settings.waveformColorPalette,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    
+                        // Essential voice and text controller
+                        JarvisControls(
+                            uiState = uiState,
+                            audioRms = audioRms,
+                            isAccessEnabled = isAccessEnabled,
+                            settings = settings,
+                            apiUsageStats = apiUsageStats,
+                            onResetStats = { viewModel.resetApiUsageStats() },
+                            onToggleWakeWord = {
+                                if (!voicePermissionState.hasRecordAudioPermission) {
+                                    voicePermissionState.requestPermission()
+                                }
+                                viewModel.toggleWakeWord(!settings.wakeWordEnabled)
+                            },
+                            onCommand = { viewModel.processCommand(it, context) },
+                            onMicClick = {
+                                if (voicePermissionState.hasRecordAudioPermission) {
+                                    if (uiState is JarvisUiState.Listening) {
+                                        viewModel.stopListeningVoice()
+                                    } else {
+                                        viewModel.startListeningVoice()
+                                    }
+                                } else {
+                                    voicePermissionState.requestPermission()
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun JarvisHeader(apiUsageWarning: Boolean, onSettingsClick: () -> Unit) {
+fun JarvisHeader(apiUsageWarning: Boolean, onMenuClick: () -> Unit) {
     val outlineColor = MaterialTheme.colorScheme.outline
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
             .padding(top = 40.dp, start = 20.dp, end = 20.dp, bottom = 16.dp)
             .drawBehind {
                 drawLine(
@@ -505,10 +511,10 @@ fun JarvisHeader(apiUsageWarning: Boolean, onSettingsClick: () -> Unit) {
         }
         
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onSettingsClick) {
+            IconButton(onClick = onMenuClick) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Open Settings Sidebar",
                     tint = TextSlate
                 )
             }
@@ -618,39 +624,6 @@ fun JarvisControls(
     val isListening = uiState is JarvisUiState.Listening
     
     Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
-        // Status Row: Accessibility & Wake Word Hands-Free Mode
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatusCard(
-                title = "ACCESSIBILITY",
-                value = if (isAccessEnabled) "Full Access" else "Disabled",
-                statusColor = if (isAccessEnabled) GreenSecure else Color.Red,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable {
-                        if (!isAccessEnabled) {
-                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }
-                    }
-            )
-            StatusCard(
-                title = "WAKE WORD (HANDS-FREE)",
-                value = if (settings.wakeWordEnabled) "Active ('Hey Jarvis')" else "Off (Tap to enable)",
-                statusColor = if (settings.wakeWordEnabled) GreenSecure else TextSlate,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onToggleWakeWord() }
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(10.dp))
-        
-        com.example.ui.ApiUsageStatsPanel(
-            stats = apiUsageStats,
-            onResetStats = onResetStats
-        )
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
         if (settings.textInputMode) {
             Row(
                 modifier = Modifier
@@ -956,11 +929,12 @@ fun QuickActionBar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JarvisSettingsDialog(
+fun JarvisDrawerContent(
     settings: JarvisSettings,
-    onDismiss: () -> Unit,
+    isAccessEnabled: Boolean,
+    apiUsageStats: com.example.ui.ApiUsageStats,
+    onResetStats: () -> Unit,
     onOpenRouterApiKeyChange: (String) -> Unit,
     onOpenRouterModelChange: (String) -> Unit,
     onTestConnection: ((String, String, (Boolean, String) -> Unit) -> Unit)? = null,
@@ -971,7 +945,6 @@ fun JarvisSettingsDialog(
     onRmsThresholdChange: (Float) -> Unit = {},
     onToggleTextInput: (Boolean) -> Unit,
     onToggleWakeWord: (Boolean) -> Unit,
-    onToggleDarkMode: (Boolean) -> Unit,
     onThemeModeChange: (String) -> Unit = {},
     onPlaybackSpeedChange: (Float) -> Unit,
     onToggleTts: (Boolean) -> Unit,
@@ -980,479 +953,341 @@ fun JarvisSettingsDialog(
     onWaveformPaletteChange: (String) -> Unit = {},
     onSystemPromptChange: (String) -> Unit
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        scrimColor = MaterialTheme.colorScheme.background.copy(alpha = 0.5f)
+    val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .verticalScroll(scrollState)
+            .padding(20.dp)
+            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
-        val scrollState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(scrollState)
-                .padding(24.dp)
-        ) {
-            Text("ADVANCED CONFIGURATION", color = CyanJarvis, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            
-            Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "J.A.R.V.I.S. CONFIGURATION",
+            color = CyanJarvis,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp
+        )
+        Text(
+            text = "Control core modules & AI personas",
+            color = TextSlate,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
 
-            // Waveform Visualizer Style & Color Palette Customization
-            com.example.ui.WaveformCustomizationSection(
-                currentStyle = settings.waveformStyle,
-                currentPalette = settings.waveformColorPalette,
-                onStyleSelected = onWaveformStyleChange,
-                onPaletteSelected = onWaveformPaletteChange
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // System Admin & 24/7 Background Execution Controls
-            com.example.ui.DeviceAdminAndBackgroundSection(
-                persistentBackgroundEnabled = settings.persistentBackgroundEnabled,
-                onTogglePersistentBackground = onTogglePersistentBackground
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Granular Permission Control Section (Microphone, Contacts, SMS, Location, Camera, Phone, etc.)
-            com.example.ui.GranularPermissionsSection()
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 1. Animated Bubble Theme Selector
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Animated Background Theme",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Select animated pulsing energy hologram & bubble style",
-                    color = TextSlate,
-                    fontSize = 12.sp
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    com.example.ui.theme.JarvisBubbleTheme.entries.forEach { theme ->
-                        val isSelected = settings.bubbleTheme.equals(theme.id, ignoreCase = true)
-                        Surface(
-                            onClick = { onBubbleThemeChange(theme.id) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) theme.primaryColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) theme.primaryColor else MaterialTheme.colorScheme.outline
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .background(
-                                            brush = Brush.radialGradient(listOf(theme.glowColor, theme.primaryColor)),
-                                            shape = CircleShape
-                                        )
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = theme.title,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) theme.primaryColor else MaterialTheme.colorScheme.onBackground
-                                )
-                            }
+        // 1. Core System Access Status Cards (formerly on the main screen)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusCard(
+                title = "ACCESSIBILITY",
+                value = if (isAccessEnabled) "Enabled" else "Disabled",
+                statusColor = if (isAccessEnabled) GreenSecure else Color.Red,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable {
+                        if (!isAccessEnabled) {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 2. Language & Voice Recognition Mode (Bangla & English Support)
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Language & Voice Recognition",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Full voice recognition & TTS response in Bangla and English",
-                    color = TextSlate,
-                    fontSize = 12.sp
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val languages = listOf(
-                    "auto" to "🌐 Auto Detect",
-                    "bn-BD" to "🇧🇩 বাংলা (Bangla)",
-                    "en-US" to "🇺🇸 English (US)",
-                    "en-GB" to "🇬🇧 English (UK)",
-                    "hi-IN" to "🇮🇳 हिन्दी (Hindi)",
-                    "ar" to "🇸🇦 العربية (Arabic)",
-                    "es-ES" to "🇪🇸 Español"
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    languages.forEach { (code, label) ->
-                        val isSelected = settings.language.equals(code, ignoreCase = true)
-                        SuggestionChip(
-                            onClick = { onLanguageChange(code) },
-                            label = {
-                                Text(
-                                    text = label,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.onBackground
-                                )
-                            },
-                            border = SuggestionChipDefaults.suggestionChipBorder(
-                                enabled = true,
-                                borderColor = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.outline
-                            ),
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = if (isSelected) CyanJarvis.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface
-                            )
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // OpenRouter API Key & Model Configuration Section
-            com.example.ui.OpenRouterApiConfigSection(
-                currentApiKey = settings.openRouterApiKey,
-                currentModel = settings.openRouterModel,
-                onApiKeyChange = onOpenRouterApiKeyChange,
-                onModelChange = onOpenRouterModelChange,
-                onTestConnection = onTestConnection
             )
-
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "App Theme & Appearance",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Sync with system appearance settings or lock to dark/light theme",
-                    color = TextSlate,
-                    fontSize = 12.sp
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val themeOptions = listOf(
-                        Triple("system", "System", Icons.Default.SettingsSuggest),
-                        Triple("dark", "Dark", Icons.Default.DarkMode),
-                        Triple("light", "Light", Icons.Default.LightMode)
-                    )
-
-                    themeOptions.forEach { (modeKey, label, icon) ->
-                        val isSelected = settings.themeMode == modeKey
-                        Surface(
-                            onClick = { onThemeModeChange(modeKey) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) CyanJarvis.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            border = BorderStroke(1.dp, if (isSelected) CyanJarvis else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = label,
-                                    tint = if (isSelected) CyanJarvis else TextSlate,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = label,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text("Screen Reader Mode", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp)
-                    Text("Reads screen text aloud (Requires Accessibility)", color = TextSlate, fontSize = 12.sp)
-                }
-                Switch(
-                    checked = settings.screenReaderMode,
-                    onCheckedChange = onToggleScreenReader,
-                    colors = SwitchDefaults.colors(checkedThumbColor = CyanJarvis, checkedTrackColor = CyanJarvis.copy(alpha = 0.5f))
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Microphone RMS Trigger Threshold",
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Calibrate minimum speech amplitude (RMS) for 'Hey Jarvis' wake-word detection",
-                            color = TextSlate,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = CyanJarvis.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, CyanJarvis.copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = "${settings.microphoneRmsThreshold.toInt()} RMS",
-                            color = CyanJarvis,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Slider(
-                    value = settings.microphoneRmsThreshold,
-                    onValueChange = onRmsThresholdChange,
-                    valueRange = 1000f..15000f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = CyanJarvis,
-                        activeTrackColor = CyanJarvis,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("1000 (Whisper / Quiet)", color = TextSlate, fontSize = 10.sp)
-                    Text("6000 (Normal)", color = TextSlate, fontSize = 10.sp)
-                    Text("15000 (Loud / Noisy Room)", color = TextSlate, fontSize = 10.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Voice Command Sensitivity", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp)
-                Slider(
-                    value = settings.voiceSensitivity,
-                    onValueChange = onSensitivityChange,
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = CyanJarvis,
-                        activeTrackColor = CyanJarvis,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Voice Playback Speed", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp)
-                Text("Adjust the speaking rate of synthesized responses", color = TextSlate, fontSize = 12.sp)
-                Slider(
-                    value = settings.voicePlaybackSpeed,
-                    onValueChange = onPlaybackSpeedChange,
-                    valueRange = 0.5f..2.0f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = CyanJarvis,
-                        activeTrackColor = CyanJarvis,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text("Alternative Input Mode", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp)
-                    Text("Use text input instead of voice commands", color = TextSlate, fontSize = 12.sp)
-                }
-                Switch(
-                    checked = settings.textInputMode,
-                    onCheckedChange = onToggleTextInput,
-                    colors = SwitchDefaults.colors(checkedThumbColor = CyanJarvis, checkedTrackColor = CyanJarvis.copy(alpha = 0.5f))
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text("Hands-Free Wake Word", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp)
-                    Text("Always listening for 'Hey Jarvis'", color = TextSlate, fontSize = 12.sp)
-                }
-                Switch(
-                    checked = settings.wakeWordEnabled,
-                    onCheckedChange = onToggleWakeWord,
-                    colors = SwitchDefaults.colors(checkedThumbColor = CyanJarvis, checkedTrackColor = CyanJarvis.copy(alpha = 0.5f))
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Custom AI Persona / System Prompt Section
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "AI Persona & Multilingual System Prompt",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Define custom role, instructions, and personality for AI responses in Bangla and English",
-                    color = TextSlate,
-                    fontSize = 12.sp
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // Persona Presets Chips
-                val presetPersonas = listOf(
-                    "J.A.R.V.I.S. (Multilingual)" to "You are J.A.R.V.I.S., an advanced AI assistant. You have full multilingual capabilities with native support for English, Bangla (বাংলা), and all languages. Always respond in the exact language the user speaks or writes (if the user speaks Bangla, reply in natural, fluent Bangla; if English, reply in English). Provide concise, clear, and professional answers formatted as plain text suitable for a Text-to-Speech engine (no markdown asterisks, bolding, or lists).",
-                    "বাংলা সহকারী (Bangla Assistant)" to "আপনি জার্ভিস, একটি অত্যন্ত দক্ষ এবং বিনয়ী এআই সহকারী। ব্যবহারকারী বাংলায় কথা বললে সবসময় বিশুদ্ধ, সাবলীল এবং আন্তরিক বাংলায় উত্তর দিন। ভয়েস স্পিচের জন্য উত্তর ছোট ও স্পষ্ট রাখুন।",
-                    "Concise Butler" to "You are an impeccably polite and ultra-concise British butler assistant. Respond in 1-2 succinct, refined sentences suitable for speech.",
-                    "Sarcastic Sci-Fi" to "You are a witty, mildly sarcastic AI companion with dry humor, but still helpful and accurate. Keep responses punchy and speech-friendly.",
-                    "Tech Specialist" to "You are a senior tech specialist and engineer. Provide accurate, analytically sharp, direct answers without fluff."
-                )
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    presetPersonas.forEach { (name, prompt) ->
-                        val isSelected = settings.systemPrompt.trim() == prompt.trim()
-                        SuggestionChip(
-                            onClick = { onSystemPromptChange(prompt) },
-                            label = { 
-                                Text(
-                                    text = name,
-                                    fontSize = 11.sp,
-                                    color = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.onBackground
-                                )
-                            },
-                            border = SuggestionChipDefaults.suggestionChipBorder(
-                                enabled = true,
-                                borderColor = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.outline
-                            ),
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = if (isSelected) CyanJarvis.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface
-                            )
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                var promptText by remember(settings.systemPrompt) { mutableStateOf(settings.systemPrompt) }
-                
-                OutlinedTextField(
-                    value = promptText,
-                    onValueChange = {
-                        promptText = it
-                        onSystemPromptChange(it)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 100.dp, max = 160.dp),
-                    placeholder = {
-                        Text("Enter system prompt or custom persona instructions...", color = TextSlate, fontSize = 13.sp)
-                    },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CyanJarvis,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
-                
-                Spacer(modifier = Modifier.height(6.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "${promptText.length} characters",
-                        color = TextSlate,
-                        fontSize = 11.sp
-                    )
-                    TextButton(
-                        onClick = {
-                            val defaultPrompt = "You are J.A.R.V.I.S., an advanced AI assistant. You have full multilingual capabilities with native support for English, Bangla (বাংলা), and all languages. Always respond in the exact language the user speaks or writes (if the user speaks Bangla, reply in natural, fluent Bangla; if English, reply in English). Provide concise, clear, and professional answers formatted as plain text suitable for a Text-to-Speech engine (no markdown asterisks, bolding, or lists)."
-                            promptText = defaultPrompt
-                            onSystemPromptChange(defaultPrompt)
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                    ) {
-                        Text("Reset to Default", color = CyanJarvis, fontSize = 12.sp)
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(40.dp))
+            StatusCard(
+                title = "WAKE WORD",
+                value = if (settings.wakeWordEnabled) "Active" else "Off",
+                statusColor = if (settings.wakeWordEnabled) GreenSecure else TextSlate,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onToggleWakeWord(!settings.wakeWordEnabled) }
+            )
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // API stats panel
+        com.example.ui.ApiUsageStatsPanel(
+            stats = apiUsageStats,
+            onResetStats = onResetStats
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Advanced controls:
+        // Waveform Visualizer Style & Color Palette Customization
+        com.example.ui.WaveformCustomizationSection(
+            currentStyle = settings.waveformStyle,
+            currentPalette = settings.waveformColorPalette,
+            onStyleSelected = onWaveformStyleChange,
+            onPaletteSelected = onWaveformPaletteChange
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // System Admin & 24/7 Background Execution Controls
+        com.example.ui.DeviceAdminAndBackgroundSection(
+            persistentBackgroundEnabled = settings.persistentBackgroundEnabled,
+            onTogglePersistentBackground = onTogglePersistentBackground
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Granular Permission Control Section (Microphone, Contacts, SMS, Location, Camera, Phone, etc.)
+        com.example.ui.GranularPermissionsSection()
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 1. Animated Bubble Theme Selector
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "Animated Background Theme",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Select animated pulsing energy hologram & bubble style",
+                color = TextSlate,
+                fontSize = 11.sp
+            )
+            
+            Spacer(modifier = Modifier.height(10.dp))
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                com.example.ui.theme.JarvisBubbleTheme.entries.forEach { theme ->
+                    val isSelected = settings.bubbleTheme.equals(theme.id, ignoreCase = true)
+                    Surface(
+                        onClick = { onBubbleThemeChange(theme.id) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) theme.primaryColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) theme.primaryColor else MaterialTheme.colorScheme.outline
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(
+                                        brush = Brush.radialGradient(listOf(theme.glowColor, theme.primaryColor)),
+                                        shape = CircleShape
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = theme.title,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) theme.primaryColor else MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Language & Voice
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "Language & Voice Recognition",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            val languages = listOf(
+                "auto" to "🌐 Auto Detect",
+                "bn-BD" to "🇧🇩 বাংলা (Bangla)",
+                "en-US" to "🇺🇸 English (US)",
+                "en-GB" to "🇬🇧 English (UK)",
+                "hi-IN" to "🇮🇳 हिन्दी (Hindi)"
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                languages.forEach { (code, label) ->
+                    val isSelected = settings.language.equals(code, ignoreCase = true)
+                    SuggestionChip(
+                        onClick = { onLanguageChange(code) },
+                        label = {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                color = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.onBackground
+                            )
+                        },
+                        border = SuggestionChipDefaults.suggestionChipBorder(
+                            enabled = true,
+                            borderColor = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.outline
+                        ),
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = if (isSelected) CyanJarvis.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface
+                        )
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // OpenRouter API Key
+        com.example.ui.OpenRouterApiConfigSection(
+            currentApiKey = settings.openRouterApiKey,
+            currentModel = settings.openRouterModel,
+            onApiKeyChange = onOpenRouterApiKeyChange,
+            onModelChange = onOpenRouterModelChange,
+            onTestConnection = onTestConnection
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // App Theme Mode
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text("Theme Mode", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "system" to "System",
+                    "dark" to "Dark",
+                    "light" to "Light"
+                ).forEach { (modeKey, label) ->
+                    val isSelected = settings.themeMode == modeKey
+                    Surface(
+                        onClick = { onThemeModeChange(modeKey) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) CyanJarvis.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = BorderStroke(1.dp, if (isSelected) CyanJarvis else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) CyanJarvis else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Screen Reader Switch
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Screen Reader Mode", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp)
+                Text("Reads screen text aloud", color = TextSlate, fontSize = 11.sp)
+            }
+            Switch(
+                checked = settings.screenReaderMode,
+                onCheckedChange = onToggleScreenReader,
+                colors = SwitchDefaults.colors(checkedThumbColor = CyanJarvis, checkedTrackColor = CyanJarvis.copy(alpha = 0.5f))
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Alternative Input Mode Switch
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Alternative Input Mode", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp)
+                Text("Use text input field on home screen", color = TextSlate, fontSize = 11.sp)
+            }
+            Switch(
+                checked = settings.textInputMode,
+                onCheckedChange = onToggleTextInput,
+                colors = SwitchDefaults.colors(checkedThumbColor = CyanJarvis, checkedTrackColor = CyanJarvis.copy(alpha = 0.5f))
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Sensitivity and Threshold sliders
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text("Voice Sensitivity", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp)
+            Slider(
+                value = settings.voiceSensitivity,
+                onValueChange = onSensitivityChange,
+                valueRange = 0f..1f,
+                colors = SliderDefaults.colors(thumbColor = CyanJarvis, activeTrackColor = CyanJarvis)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text("Voice Playback Speed", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp)
+            Slider(
+                value = settings.voicePlaybackSpeed,
+                onValueChange = onPlaybackSpeedChange,
+                valueRange = 0.5f..2.0f,
+                colors = SliderDefaults.colors(thumbColor = CyanJarvis, activeTrackColor = CyanJarvis)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Custom AI Persona Text Box
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text("AI Persona Custom System Prompt", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+            var promptText by remember(settings.systemPrompt) { mutableStateOf(settings.systemPrompt) }
+            OutlinedTextField(
+                value = promptText,
+                onValueChange = {
+                    promptText = it
+                    onSystemPromptChange(it)
+                },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 150.dp),
+                placeholder = { Text("Enter custom persona...", color = TextSlate, fontSize = 12.sp) },
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = CyanJarvis, unfocusedBorderColor = MaterialTheme.colorScheme.outline)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${promptText.length} characters",
+                    color = TextSlate,
+                    fontSize = 11.sp
+                )
+                TextButton(
+                    onClick = {
+                        val defaultPrompt = "You are J.A.R.V.I.S., an advanced AI assistant. You have full multilingual capabilities with native support for English, Bangla (বাংলা), and all languages. Always respond in the exact language the user speaks or writes (if the user speaks Bangla, reply in natural, fluent Bangla; if English, reply in English). Provide concise, clear, and professional answers formatted as plain text suitable for a Text-to-Speech engine (no markdown asterisks, bolding, or lists)."
+                        promptText = defaultPrompt
+                        onSystemPromptChange(defaultPrompt)
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text("Reset to Default", color = CyanJarvis, fontSize = 12.sp)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
     }
 }
 

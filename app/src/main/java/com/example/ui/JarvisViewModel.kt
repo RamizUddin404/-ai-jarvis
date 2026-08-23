@@ -408,6 +408,15 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         _audioRms.value = 0f
         _partialSpeechText.value = ""
     }
+
+    fun setPartialSpeechText(text: String) {
+        _partialSpeechText.value = text
+    }
+
+    fun setAudioRms(rms: Float) {
+        val normalized = ((rms + 2f) / 12f).coerceIn(0f, 1f)
+        _audioRms.value = normalized
+    }
 }
 
 sealed class JarvisUiState {
