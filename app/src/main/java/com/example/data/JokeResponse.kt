@@ -6,9 +6,9 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class JokeResponse(
     @Json(name = "id")
-    val id: Int,
+    val id: Int? = null,
     @Json(name = "type")
-    val type: String,
+    val type: String? = null,
     @Json(name = "setup")
     val setup: String? = null,
     @Json(name = "delivery")

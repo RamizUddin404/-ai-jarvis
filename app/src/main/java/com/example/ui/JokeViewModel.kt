@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.JokeResponse
+import com.example.data.JokeService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +36,7 @@ class JokeViewModel : ViewModel() {
         )
         .build()
 
-    private val jokeService = retrofit.create(com.example.data.JokeService::class.java)
+    private val jokeService = retrofit.create(JokeService::class.java)
 
     fun getRandomJoke() {
         viewModelScope.launch {
