@@ -4,15 +4,23 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.JokeResponse
-import com.example.data.JokeService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import retrofit2.http.GET
+import retrofit2.http.Query
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+
+interface JokeServiceApi {
+    @GET("random")
+    suspend fun getRandomJoke(
+        @Query("format") format: String = "json"
+    ): JokeResponse
+}
 
 data class JokeUiState(
     val joke: String = "",
@@ -36,7 +44,7 @@ class JokeViewModel : ViewModel() {
         )
         .build()
 
-    private val jokeService = retrofit.create(JokeService::class.java)
+    private val jokeService = retrofit.create(JokeServiceApi::class.java)
 
     fun getRandomJoke() {
         viewModelScope.launch {
