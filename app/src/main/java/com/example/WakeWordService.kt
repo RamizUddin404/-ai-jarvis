@@ -22,6 +22,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.sqrt
+import com.example.util.HeyJarvisTFLiteDetector
 
 class WakeWordService : Service() {
 
@@ -31,11 +32,13 @@ class WakeWordService : Service() {
     private var partialWakeLock: PowerManager.WakeLock? = null
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    private var tfLiteDetector: HeyJarvisTFLiteDetector? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        tfLiteDetector = HeyJarvisTFLiteDetector(applicationContext)
         createNotificationChannel()
     }
 
@@ -197,7 +200,31 @@ class WakeWordService : Service() {
 
                         val now = System.currentTimeMillis()
 
-                        // Check if audio frame matches vocal frequency band (ZCR between 0.02 and 0.35)
+                        // Process audio buffer with localized TFLite 'Hey Jarvis' Detector
+                        val tfliteResult = tfLiteDetector?.processAudioFrame(buffer, readSize)
+                        if (tfliteResult != null && tfliteResult.isDetected && (now - lastTriggerTimestamp > 3000)) {
+                            lastTriggerTimestamp = now
+                            consecutiveBurstCount = 0
+
+                            Log.d("WakeWordService", "🎯 Localized TFLite 'Hey Jarvis' keyword detected! Confidence: ${(tfliteResult.confidence * 100).toInt()}%")
+
+                            // 1. Turn screen on and bring app to foreground
+                            wakeScreenAndLaunchApp()
+
+                            // 2. Broadcast trigger
+                            val broadcastIntent = Intent("com.example.ACTION_WAKE_WORD_DETECTED").apply {
+                                setPackage(packageName)
+                            }
+                            sendBroadcast(broadcastIntent)
+
+                            // 3. Start speech recognition
+                            val langPref = prefs.getString("selected_language", "auto") ?: "auto"
+                            SpeechRecognitionService.startListening(this@WakeWordService, langPref)
+
+                            Thread.sleep(2200)
+                        }
+
+                        // Check if audio frame matches vocal frequency band (ZCR between 0.02 and 0.38)
                         val isVocalFrequency = zcr in 0.02..0.38
 
                         if (rms > threshold && isVocalFrequency) {

@@ -380,7 +380,12 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     } else if (uiState is JarvisUiState.Speaking || uiState is JarvisUiState.Thinking) {
-                        JarvisStatusText(uiState)
+                        com.example.ui.GeminiStreamingAudioWaveform(
+                            audioRms = if (audioRms > 0.05f) audioRms else 0.45f,
+                            statusMessage = if (uiState is JarvisUiState.Speaking) "GEMINI LIVE VOICE STREAM ACTIVE" else "FORMULATING RESPONSE...",
+                            isAiStreaming = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 
