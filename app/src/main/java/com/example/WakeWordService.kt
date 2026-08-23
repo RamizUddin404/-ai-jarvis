@@ -36,10 +36,64 @@ class WakeWordService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var isMicrophonePausedForSpeech = false
+    private var pauseReceiver: android.content.BroadcastReceiver? = null
+
     override fun onCreate() {
         super.onCreate()
         tfLiteDetector = HeyJarvisTFLiteDetector(applicationContext)
         createNotificationChannel()
+        registerPauseReceiver()
+    }
+
+    private fun registerPauseReceiver() {
+        pauseReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    "com.example.ACTION_PAUSE_WAKE_WORD" -> {
+                        Log.d("WakeWordService", "Pausing WakeWord AudioRecord for active SpeechRecognizer")
+                        pauseAudioRecording()
+                    }
+                    "com.example.ACTION_RESUME_WAKE_WORD" -> {
+                        Log.d("WakeWordService", "Resuming WakeWord AudioRecord after SpeechRecognizer completed")
+                        resumeAudioRecording()
+                    }
+                }
+            }
+        }
+        val filter = android.content.IntentFilter().apply {
+            addAction("com.example.ACTION_PAUSE_WAKE_WORD")
+            addAction("com.example.ACTION_RESUME_WAKE_WORD")
+        }
+        ContextCompat.registerReceiver(
+            this,
+            pauseReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    private fun pauseAudioRecording() {
+        isMicrophonePausedForSpeech = true
+        try {
+            audioRecord?.stop()
+        } catch (e: Exception) {
+            Log.w("WakeWordService", "Error stopping AudioRecord on pause", e)
+        }
+    }
+
+    private fun resumeAudioRecording() {
+        serviceScope.launch {
+            kotlinx.coroutines.delay(400)
+            isMicrophonePausedForSpeech = false
+            try {
+                if (audioRecord?.state == AudioRecord.STATE_INITIALIZED && audioRecord?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord?.startRecording()
+                }
+            } catch (e: Exception) {
+                Log.w("WakeWordService", "Error starting AudioRecord on resume", e)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -168,6 +222,10 @@ class WakeWordService : Service() {
                 var lastTriggerTimestamp = 0L
 
                 while (isActive && isRecording) {
+                    if (isMicrophonePausedForSpeech) {
+                        kotlinx.coroutines.delay(200)
+                        continue
+                    }
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
                         var sumSquare = 0.0
@@ -315,6 +373,9 @@ class WakeWordService : Service() {
     override fun onDestroy() {
         isRecording = false
         releasePartialWakeLock()
+        pauseReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
         scheduleServiceRestart()
         try {
             audioRecord?.stop()

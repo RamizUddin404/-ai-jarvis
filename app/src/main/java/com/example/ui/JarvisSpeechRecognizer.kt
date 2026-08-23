@@ -197,9 +197,17 @@ class JarvisSpeechRecognizer(
         }
     }
 
+    private var autoRetryCount = 0
+
     fun startListening(language: String = "auto") {
         mainHandler.post {
             try {
+                // Pause background WakeWordService AudioRecord to ensure SpeechRecognizer has exclusive mic access
+                val pauseMicIntent = Intent("com.example.ACTION_PAUSE_WAKE_WORD").apply {
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(pauseMicIntent)
+
                 // Diagnostic check for RECORD_AUDIO permission status
                 val hasPermission = ContextCompat.checkSelfPermission(
                     context,
@@ -212,6 +220,10 @@ class JarvisSpeechRecognizer(
                     onErrorCallback(errMsg)
                     onStatusChange(false)
                     return@post
+                }
+
+                if (isCurrentlyListening) {
+                    try { speechRecognizer?.cancel() } catch (_: Exception) {}
                 }
 
                 if (speechRecognizer == null) {
@@ -265,6 +277,7 @@ class JarvisSpeechRecognizer(
             } finally {
                 onStatusChange(false)
                 onRmsChangedCallback(0f)
+                resumeWakeWordService()
             }
         }
     }
@@ -281,6 +294,7 @@ class JarvisSpeechRecognizer(
                 onStatusChange(false)
                 onRmsChangedCallback(0f)
                 onPartialResult("")
+                resumeWakeWordService()
             }
         }
     }
@@ -322,6 +336,13 @@ class JarvisSpeechRecognizer(
         onRmsChangedCallback(0f)
     }
 
+    private fun resumeWakeWordService() {
+        val resumeMicIntent = Intent("com.example.ACTION_RESUME_WAKE_WORD").apply {
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(resumeMicIntent)
+    }
+
     override fun onError(error: Int) {
         lastRecordedErrorCode = error
         val (userMessage, detailedLog) = getDetailedErrorDiagnostic(error)
@@ -331,13 +352,24 @@ class JarvisSpeechRecognizer(
         onStatusChange(false)
         onRmsChangedCallback(0f)
 
-        // For busy or client error, reinit recognizer to clear stale state
+        // For busy or client error, reinit recognizer and silently auto-retry once
         if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_CLIENT) {
-            Log.d(TAG, "[DIAGNOSTIC RECOVERY] Reinitializing SpeechRecognizer after error $error...")
+            Log.d(TAG, "[DIAGNOSTIC RECOVERY] Silent auto-retry after error $error (retryCount: $autoRetryCount)...")
             mainHandler.postDelayed({
                 initRecognizer()
-            }, 300)
+                if (autoRetryCount < 2) {
+                    autoRetryCount++
+                    startListening()
+                } else {
+                    autoRetryCount = 0
+                    resumeWakeWordService()
+                }
+            }, 250)
+            return
         }
+
+        autoRetryCount = 0
+        resumeWakeWordService()
 
         if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
             onErrorCallback(userMessage)
@@ -345,6 +377,7 @@ class JarvisSpeechRecognizer(
     }
 
     override fun onResults(results: Bundle?) {
+        autoRetryCount = 0
         isCurrentlyListening = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         if (!matches.isNullOrEmpty()) {
@@ -357,6 +390,7 @@ class JarvisSpeechRecognizer(
         onStatusChange(false)
         onRmsChangedCallback(0f)
         onPartialResult("")
+        resumeWakeWordService()
     }
 
     override fun onPartialResults(partialResults: Bundle?) {

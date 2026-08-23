@@ -265,6 +265,20 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
     val isApiKeyConfigured = settings.openRouterApiKey.isNotBlank() ||
         (BuildConfig.OPENROUTER_API_KEY.isNotBlank() && BuildConfig.OPENROUTER_API_KEY != "MY_OPENROUTER_API_KEY")
 
+    val latestGeneratedCode by viewModel.latestGeneratedCode.collectAsState()
+    val showCodeStudioModal by viewModel.showCodeStudioModal.collectAsState()
+
+    if (showCodeStudioModal) {
+        com.example.ui.JarvisCodeStudioModal(
+            onDismiss = { viewModel.toggleCodeStudioModal(false) },
+            onGenerateCodePrompt = { prompt ->
+                viewModel.processCommand(prompt, context)
+            },
+            currentGeneratedCode = latestGeneratedCode,
+            isAiGenerating = uiState is JarvisUiState.Thinking
+        )
+    }
+
     if (showSettings) {
         JarvisSettingsDialog(
             settings = settings,
@@ -333,6 +347,7 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
                         currentLanguage = settings.language,
                         isAccessEnabled = isAccessEnabled,
                         onThemeClick = { showSettings = true },
+                        onCodeStudioClick = { viewModel.toggleCodeStudioModal(true) },
                         onLanguageClick = {
                             val nextLang = when (settings.language) {
                                 "auto" -> "bn-BD"
@@ -787,6 +802,7 @@ fun QuickActionBar(
     currentLanguage: String,
     isAccessEnabled: Boolean,
     onThemeClick: () -> Unit,
+    onCodeStudioClick: () -> Unit = {},
     onLanguageClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -805,6 +821,33 @@ fun QuickActionBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // AI Code Studio Chip
+        Surface(
+            onClick = onCodeStudioClick,
+            shape = RoundedCornerShape(20.dp),
+            color = CyanJarvis.copy(alpha = 0.15f),
+            border = BorderStroke(1.dp, CyanJarvis.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Science,
+                    contentDescription = "Code Studio",
+                    tint = CyanJarvis,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "💻 AI Code Studio",
+                    fontSize = 11.sp,
+                    color = CyanJarvis,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
         // Theme Chip
         Surface(
             onClick = onThemeClick,

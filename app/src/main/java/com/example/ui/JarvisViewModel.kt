@@ -12,6 +12,7 @@ import com.example.network.GeminiRepository
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
@@ -333,38 +334,65 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private val _latestGeneratedCode = MutableStateFlow("")
+    val latestGeneratedCode: StateFlow<String> = _latestGeneratedCode.asStateFlow()
+
+    private val _showCodeStudioModal = MutableStateFlow(false)
+    val showCodeStudioModal: StateFlow<Boolean> = _showCodeStudioModal.asStateFlow()
+
+    fun toggleCodeStudioModal(show: Boolean) {
+        _showCodeStudioModal.value = show
+    }
+
     fun processCommand(command: String, context: android.content.Context) {
         viewModelScope.launch {
             _uiState.value = JarvisUiState.Thinking
             chatRepository.insertChat(com.example.data.ChatEntity(role = "user", content = command))
-            
-            // 1. Fast Native AR Phone Controller Execution (English & Bangla)
-            val phoneResult = com.example.util.JarvisPhoneController.executeCommand(context, command)
-            
-            val response = if (phoneResult.handled) {
-                phoneResult.responseText
-            } else {
-                val now = System.currentTimeMillis()
-                requestTimestamps.add(now)
-                requestTimestamps.removeAll { now - it > 60_000 }
-                _apiUsageWarning.value = requestTimestamps.size >= 12
-                
-                incrementApiCallCount()
-                val contextInjection = com.example.util.ContextualAwarenessEngine.buildContextPromptInjection(
-                    recentUserMessages = chatHistory.value.map { it.content }
-                )
-                val enrichedSystemPrompt = "${_settings.value.systemPrompt}\n\n$contextInjection"
 
-                repository.generateResponse(
-                    prompt = command,
-                    systemPrompt = enrichedSystemPrompt,
-                    userApiKey = _settings.value.openRouterApiKey,
-                    userModel = _settings.value.openRouterModel
-                )
+            // 0. App Self-Modification Check
+            val selfModResult = com.example.util.JarvisSelfModifierEngine.processSelfModificationCommand(
+                command = command,
+                viewModel = this@JarvisViewModel,
+                context = context
+            )
+
+            val response = if (selfModResult.modified) {
+                selfModResult.description
+            } else {
+                // 1. Fast Native AR Phone Controller Execution (English & Bangla)
+                val phoneResult = com.example.util.JarvisPhoneController.executeCommand(context, command)
+
+                if (phoneResult.handled) {
+                    phoneResult.responseText
+                } else {
+                    val now = System.currentTimeMillis()
+                    requestTimestamps.add(now)
+                    requestTimestamps.removeAll { now - it > 60_000 }
+                    _apiUsageWarning.value = requestTimestamps.size >= 12
+
+                    incrementApiCallCount()
+                    val contextInjection = com.example.util.ContextualAwarenessEngine.buildContextPromptInjection(
+                        recentUserMessages = chatHistory.value.map { it.content }
+                    )
+                    val enrichedSystemPrompt = "${_settings.value.systemPrompt}\n\n$contextInjection"
+
+                    repository.generateResponse(
+                        prompt = command,
+                        systemPrompt = enrichedSystemPrompt,
+                        userApiKey = _settings.value.openRouterApiKey,
+                        userModel = _settings.value.openRouterModel
+                    )
+                }
             }
-            
+
+            // Check if AI generated HTML / Web code
+            if (response.contains("<!DOCTYPE html>", ignoreCase = true) || response.contains("<html", ignoreCase = true)) {
+                _latestGeneratedCode.value = response
+                _showCodeStudioModal.value = true
+            }
+
             chatRepository.insertChat(com.example.data.ChatEntity(role = "jarvis", content = response))
-            
+
             FirebaseManager.saveUserCommand(command, response)
             _uiState.value = JarvisUiState.Speaking(response)
         }
