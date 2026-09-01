@@ -123,4 +123,33 @@ class GeminiRepository {
             Result.failure(Exception(e.localizedMessage ?: "Network error connecting to OpenRouter"))
         }
     }
+
+    suspend fun generateStudySummary(
+        topic: String,
+        sessionContent: String,
+        userApiKey: String? = null,
+        userModel: String? = null
+    ): String {
+        val prompt = """
+            Generate a structured study session summary for topic: "$topic".
+
+            Session Content and Notes:
+            $sessionContent
+
+            Please highlight:
+            - Key Concepts
+            - Core Facts
+            - Questions & Answers Encountered
+
+            Provide a concise, clear, and well-structured summary.
+        """.trimIndent()
+
+        val studySystemPrompt = "You are an expert AI tutor. Generate clear, structured study summaries highlighting key concepts, core facts, and questions/answers from study sessions."
+        return generateResponse(
+            prompt = prompt,
+            systemPrompt = studySystemPrompt,
+            userApiKey = userApiKey,
+            userModel = userModel
+        )
+    }
 }
