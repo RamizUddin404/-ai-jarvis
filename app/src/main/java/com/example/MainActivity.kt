@@ -298,6 +298,14 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
     val latestGeneratedCode by viewModel.latestGeneratedCode.collectAsState()
     val showCodeStudioModal by viewModel.showCodeStudioModal.collectAsState()
 
+    val studySessions by viewModel.studySessions.collectAsState()
+    val activeStudySession by viewModel.activeStudySession.collectAsState()
+    val pendingSummarySession by viewModel.pendingSummarySession.collectAsState()
+    val isGeneratingSummary by viewModel.isGeneratingSummary.collectAsState()
+    val showStudyModeModal by viewModel.showStudyModeModal.collectAsState()
+    val showStudyHistoryModal by viewModel.showStudyHistoryModal.collectAsState()
+    val showStudySummaryModal by viewModel.showStudySummaryModal.collectAsState()
+
     if (showCodeStudioModal) {
         com.example.ui.JarvisCodeStudioModal(
             onDismiss = { viewModel.toggleCodeStudioModal(false) },
@@ -306,6 +314,38 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
             },
             currentGeneratedCode = latestGeneratedCode,
             isAiGenerating = uiState is JarvisUiState.Thinking
+        )
+    }
+
+    if (showStudyModeModal) {
+        com.example.ui.StudyModeModal(
+            activeSession = activeStudySession,
+            onDismiss = { viewModel.toggleStudyModeModal(false) },
+            onStartSession = { topic -> viewModel.startStudySession(topic) },
+            onRecordNote = { note -> viewModel.recordStudyNote(note) },
+            onEndSession = { viewModel.endStudySessionAndGenerateSummary() }
+        )
+    }
+
+    if (showStudyHistoryModal) {
+        com.example.ui.StudyHistoryModal(
+            studySessions = studySessions,
+            onDismiss = { viewModel.toggleStudyHistoryModal(false) },
+            onSaveSummary = { id, summary -> viewModel.saveStudySummary(id, summary) },
+            onEditSummary = { id, summary -> viewModel.editStudySummary(id, summary) },
+            onDiscardSummary = { id -> viewModel.discardStudySummary(id) },
+            onDeleteSession = { id -> viewModel.deleteStudySession(id) }
+        )
+    }
+
+    if (showStudySummaryModal) {
+        com.example.ui.StudySummaryModal(
+            session = pendingSummarySession,
+            isGenerating = isGeneratingSummary,
+            onDismiss = { viewModel.toggleStudySummaryModal(false) },
+            onSaveSummary = { id, summary -> viewModel.saveStudySummary(id, summary) },
+            onEditSummary = { id, summary -> viewModel.editStudySummary(id, summary) },
+            onDiscardSummary = { id -> viewModel.discardStudySummary(id) }
         )
     }
 
@@ -351,7 +391,15 @@ fun JarvisScreen(isAccessEnabled: Boolean, viewModel: JarvisViewModel = viewMode
                         onTogglePersistentBackground = { viewModel.togglePersistentBackground(it) },
                         onWaveformStyleChange = { viewModel.updateWaveformStyle(it) },
                         onWaveformPaletteChange = { viewModel.updateWaveformPalette(it) },
-                        onSystemPromptChange = { viewModel.updateSystemPrompt(it) }
+                        onSystemPromptChange = { viewModel.updateSystemPrompt(it) },
+                        onOpenStudyMode = {
+                            scope.launch { drawerState.close() }
+                            viewModel.toggleStudyModeModal(true)
+                        },
+                        onOpenStudyHistory = {
+                            scope.launch { drawerState.close() }
+                            viewModel.toggleStudyHistoryModal(true)
+                        }
                     )
                 }
             }
@@ -776,6 +824,9 @@ fun QuickActionBar(
     isAccessEnabled: Boolean,
     onThemeClick: () -> Unit,
     onCodeStudioClick: () -> Unit = {},
+    onStudyModeClick: () -> Unit = {},
+    onStudyHistoryClick: () -> Unit = {},
+    hasActiveStudySession: Boolean = false,
     onLanguageClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -794,9 +845,9 @@ fun QuickActionBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // AI Code Studio Chip
+        // Study Mode Chip
         Surface(
-            onClick = onCodeStudioClick,
+            onClick = onStudyModeClick,
             shape = RoundedCornerShape(20.dp),
             color = CyanJarvis.copy(alpha = 0.15f),
             border = BorderStroke(1.dp, CyanJarvis.copy(alpha = 0.5f))
@@ -807,16 +858,36 @@ fun QuickActionBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Science,
-                    contentDescription = "Code Studio",
+                    contentDescription = "Study Mode",
                     tint = CyanJarvis,
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "💻 AI Code Studio",
+                    text = if (hasActiveStudySession) "📚 Active Session" else "📚 Study Mode",
                     fontSize = 11.sp,
                     color = CyanJarvis,
                     fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Study History Chip
+        Surface(
+            onClick = onStudyHistoryClick,
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, CyanJarvis.copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📖 Study History",
+                    fontSize = 11.sp,
+                    color = CyanJarvis,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -951,7 +1022,9 @@ fun JarvisDrawerContent(
     onTogglePersistentBackground: (Boolean) -> Unit = {},
     onWaveformStyleChange: (String) -> Unit = {},
     onWaveformPaletteChange: (String) -> Unit = {},
-    onSystemPromptChange: (String) -> Unit
+    onSystemPromptChange: (String) -> Unit,
+    onOpenStudyMode: () -> Unit = {},
+    onOpenStudyHistory: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
@@ -980,7 +1053,29 @@ fun JarvisDrawerContent(
         
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 1. Core System Access Status Cards (formerly on the main screen)
+        // AI Study Tools Entry Buttons
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusCard(
+                title = "STUDY MODE",
+                value = "Start Session",
+                statusColor = CyanJarvis,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onOpenStudyMode() }
+            )
+            StatusCard(
+                title = "STUDY HISTORY",
+                value = "View Summaries",
+                statusColor = GreenSecure,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onOpenStudyHistory() }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Core System Access Status Cards
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusCard(
                 title = "ACCESSIBILITY",

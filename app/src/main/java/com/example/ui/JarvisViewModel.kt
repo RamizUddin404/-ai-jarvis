@@ -141,6 +141,141 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             initialValue = emptyList()
         )
 
+    private val studyDao = database.studyDao()
+    val studySessions: StateFlow<List<com.example.data.StudySessionEntity>> = studyDao.getAllSessions()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    private val _activeStudySession = MutableStateFlow<com.example.data.StudySessionEntity?>(null)
+    val activeStudySession: StateFlow<com.example.data.StudySessionEntity?> = _activeStudySession.asStateFlow()
+
+    private val _pendingSummarySession = MutableStateFlow<com.example.data.StudySessionEntity?>(null)
+    val pendingSummarySession: StateFlow<com.example.data.StudySessionEntity?> = _pendingSummarySession.asStateFlow()
+
+    private val _isGeneratingSummary = MutableStateFlow(false)
+    val isGeneratingSummary: StateFlow<Boolean> = _isGeneratingSummary.asStateFlow()
+
+    private val _showStudyModeModal = MutableStateFlow(false)
+    val showStudyModeModal: StateFlow<Boolean> = _showStudyModeModal.asStateFlow()
+
+    private val _showStudyHistoryModal = MutableStateFlow(false)
+    val showStudyHistoryModal: StateFlow<Boolean> = _showStudyHistoryModal.asStateFlow()
+
+    private val _showStudySummaryModal = MutableStateFlow(false)
+    val showStudySummaryModal: StateFlow<Boolean> = _showStudySummaryModal.asStateFlow()
+
+    fun toggleStudyModeModal(show: Boolean) {
+        _showStudyModeModal.value = show
+    }
+
+    fun toggleStudyHistoryModal(show: Boolean) {
+        _showStudyHistoryModal.value = show
+    }
+
+    fun toggleStudySummaryModal(show: Boolean) {
+        _showStudySummaryModal.value = show
+    }
+
+    fun startStudySession(topic: String) {
+        val newSession = com.example.data.StudySessionEntity(
+            topic = topic.ifBlank { "General Study Session" },
+            startTime = System.currentTimeMillis()
+        )
+        viewModelScope.launch {
+            val id = studyDao.insertSession(newSession)
+            _activeStudySession.value = newSession.copy(id = id.toInt())
+        }
+    }
+
+    fun recordStudyNote(note: String) {
+        val current = _activeStudySession.value ?: return
+        val updatedNotes = if (current.sessionNotes.isBlank()) note else "${current.sessionNotes}\n• $note"
+        val updatedSession = current.copy(sessionNotes = updatedNotes)
+        _activeStudySession.value = updatedSession
+        viewModelScope.launch {
+            studyDao.updateSession(updatedSession)
+        }
+    }
+
+    fun endStudySessionAndGenerateSummary() {
+        val current = _activeStudySession.value ?: return
+        val endedSession = current.copy(endTime = System.currentTimeMillis())
+        _activeStudySession.value = null
+
+        viewModelScope.launch {
+            studyDao.updateSession(endedSession)
+            _isGeneratingSummary.value = true
+            _pendingSummarySession.value = endedSession
+            _showStudySummaryModal.value = true
+
+            val notesContent = if (endedSession.sessionNotes.isNotBlank()) endedSession.sessionNotes else "General study activity and concepts covered during session."
+            val summaryText = repository.generateStudySummary(
+                topic = endedSession.topic,
+                sessionContent = notesContent,
+                userApiKey = _settings.value.openRouterApiKey,
+                userModel = _settings.value.openRouterModel
+            )
+
+            val sessionWithSummary = endedSession.copy(aiSummary = summaryText)
+            studyDao.updateSession(sessionWithSummary)
+            _pendingSummarySession.value = sessionWithSummary
+            _isGeneratingSummary.value = false
+        }
+    }
+
+    fun saveStudySummary(sessionId: Int, summaryText: String) {
+        viewModelScope.launch {
+            val session = studyDao.getSessionById(sessionId) ?: _pendingSummarySession.value
+            if (session != null && session.id == sessionId) {
+                val updated = session.copy(aiSummary = summaryText, isSummarySaved = true)
+                studyDao.updateSession(updated)
+                if (_pendingSummarySession.value?.id == sessionId) {
+                    _pendingSummarySession.value = updated
+                }
+            }
+        }
+    }
+
+    fun editStudySummary(sessionId: Int, newSummaryText: String) {
+        viewModelScope.launch {
+            val session = studyDao.getSessionById(sessionId) ?: _pendingSummarySession.value
+            if (session != null && session.id == sessionId) {
+                val updated = session.copy(aiSummary = newSummaryText)
+                studyDao.updateSession(updated)
+                if (_pendingSummarySession.value?.id == sessionId) {
+                    _pendingSummarySession.value = updated
+                }
+            }
+        }
+    }
+
+    fun discardStudySummary(sessionId: Int) {
+        viewModelScope.launch {
+            val session = studyDao.getSessionById(sessionId) ?: _pendingSummarySession.value
+            if (session != null && session.id == sessionId) {
+                val updated = session.copy(aiSummary = "", isSummarySaved = false)
+                studyDao.updateSession(updated)
+                if (_pendingSummarySession.value?.id == sessionId) {
+                    _pendingSummarySession.value = null
+                    _showStudySummaryModal.value = false
+                }
+            }
+        }
+    }
+
+    fun deleteStudySession(sessionId: Int) {
+        viewModelScope.launch {
+            studyDao.deleteSessionById(sessionId)
+            if (_pendingSummarySession.value?.id == sessionId) {
+                _pendingSummarySession.value = null
+                _showStudySummaryModal.value = false
+            }
+        }
+    }
+
     private val _uiState = MutableStateFlow<JarvisUiState>(JarvisUiState.Idle)
     val uiState: StateFlow<JarvisUiState> = _uiState
 
