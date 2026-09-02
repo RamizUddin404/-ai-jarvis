@@ -57,13 +57,15 @@ data class ParsedCommandIntent(
  */
 object CommandExecutor {
     private const val TAG = "CommandExecutor"
+    // Security: Limit input query length to mitigate DoS / resource exhaustion attacks via excessively long strings.
+    private const val MAX_QUERY_LENGTH = 1000
 
     /**
      * Primary entry point to parse a raw voice query using NLP rules
      * and execute the corresponding Android Intent action.
      */
     fun parseAndExecute(context: Context, rawQuery: String): CommandExecutionResult {
-        val query = rawQuery.trim()
+        val query = rawQuery.trim().take(MAX_QUERY_LENGTH)
         if (query.isEmpty()) {
             return CommandExecutionResult(false, CommandIntentType.UNKNOWN, "")
         }
@@ -77,7 +79,7 @@ object CommandExecutor {
      * to parse voice queries into structured Intent types and parameters.
      */
     fun parseQuery(rawQuery: String): ParsedCommandIntent {
-        val query = rawQuery.trim()
+        val query = rawQuery.trim().take(MAX_QUERY_LENGTH)
         val lower = query.lowercase(Locale.ROOT)
         val isBn = containsBengali(query)
 
