@@ -1,0 +1,3 @@
+## 2025-05-18 - Jetpack Compose LazyColumn Keys and ContentTypes
+**Learning:** Omitting `key` and `contentType` in Jetpack Compose `LazyColumn` for dynamic lists (such as chat histories or log lists) causes unnecessary recompositions of all items when new elements are inserted or state (e.g. `isThinking`) changes. Specifying stable keys (`key = { it.id }`) and content types (`contentType = { it.role }`) allows Compose to retain state, reuse compositions, and optimize layout passes.
+**Action:** Always provide stable `key` and `contentType` parameters in `LazyColumn`/`LazyRow` items blocks across the app when rendering dynamic collections.
