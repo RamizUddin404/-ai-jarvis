@@ -64,7 +64,13 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimization: Use stable key (chat.id) and contentType (chat.role) to prevent full list recompositions
+        // and reuse item compositions efficiently when new items are added or list updates.
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id },
+            contentType = { chat -> chat.role }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
@@ -74,7 +80,7 @@ fun JarvisChatList(
         }
 
         if (isThinking) {
-            item {
+            item(key = "thinking_indicator", contentType = "thinking_indicator") {
                 JarvisTypingIndicatorBubble(theme = theme)
             }
         }

@@ -103,7 +103,11 @@ fun StudyHistoryModal(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(studySessions) { session ->
+                        // Optimization: Use stable key (session.id) so Compose preserves scroll state and skips recomposing unchanged session items during state updates.
+                        items(
+                            items = studySessions,
+                            key = { session -> session.id }
+                        ) { session ->
                             StudySessionHistoryItem(
                                 session = session,
                                 onClick = { selectedSessionForDetail = session },
