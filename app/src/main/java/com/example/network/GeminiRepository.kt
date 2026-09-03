@@ -34,6 +34,14 @@ object RetrofitClient {
 }
 
 class GeminiRepository {
+    /**
+     * Sanitizes API keys by removing control characters, newlines, and whitespace
+     * to prevent HTTP header injection and runtime crashes in OkHttp.
+     */
+    fun sanitizeApiKey(key: String): String {
+        return key.replace(Regex("[\\s\\r\\n\\t\\u0000-\\u001F]"), "")
+    }
+
     suspend fun generateResponse(
         prompt: String,
         systemPrompt: String? = null,
@@ -41,8 +49,8 @@ class GeminiRepository {
         userModel: String? = null
     ): String = withContext(Dispatchers.IO) {
         val apiKey = when {
-            !userApiKey.isNullOrBlank() -> userApiKey.trim()
-            BuildConfig.OPENROUTER_API_KEY.isNotBlank() && BuildConfig.OPENROUTER_API_KEY != "MY_OPENROUTER_API_KEY" -> BuildConfig.OPENROUTER_API_KEY.trim()
+            !userApiKey.isNullOrBlank() -> sanitizeApiKey(userApiKey)
+            BuildConfig.OPENROUTER_API_KEY.isNotBlank() && BuildConfig.OPENROUTER_API_KEY != "MY_OPENROUTER_API_KEY" -> sanitizeApiKey(BuildConfig.OPENROUTER_API_KEY)
             else -> ""
         }
         
@@ -83,15 +91,15 @@ class GeminiRepository {
                 401 -> "Authentication error (HTTP 401): Invalid OpenRouter API Key. Please verify the key in Settings."
                 402 -> "Payment required (HTTP 402): Insufficient OpenRouter credits/balance. Please recharge your account at openrouter.ai."
                 429 -> "Rate limit exceeded (HTTP 429). Please check your OpenRouter API quota limit."
-                else -> "OpenRouter HTTP ${e.code()} Error: ${e.message()}"
+                else -> "OpenRouter HTTP ${e.code()} Error: Request failed."
             }
         } catch (e: Exception) {
-            "Connection error: ${e.localizedMessage ?: e.message}"
+            "Connection error: Unable to complete request."
         }
     }
 
     suspend fun testApiKeyConnection(apiKey: String, model: String): Result<String> = withContext(Dispatchers.IO) {
-        val trimmedKey = apiKey.trim()
+        val trimmedKey = sanitizeApiKey(apiKey)
         if (trimmedKey.isEmpty()) {
             return@withContext Result.failure(IllegalArgumentException("API Key cannot be empty."))
         }
@@ -116,11 +124,11 @@ class GeminiRepository {
                 401 -> "Invalid API Key (HTTP 401). Please check key characters."
                 402 -> "Insufficient OpenRouter balance / credits (HTTP 402)."
                 429 -> "Rate limit / Quota exceeded (HTTP 429)."
-                else -> "HTTP ${e.code()}: ${e.message()}"
+                else -> "HTTP ${e.code()}: Request failed"
             }
             Result.failure(Exception(msg))
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Network error connecting to OpenRouter"))
+            Result.failure(Exception("Network error connecting to OpenRouter"))
         }
     }
 
