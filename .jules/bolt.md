@@ -1,0 +1,3 @@
+## 2025-05-18 - Jetpack Compose LazyColumn Positional vs Primary Key Stability
+**Learning:** Omitting explicit `key` parameters in Jetpack Compose `LazyColumn` `items(...)` defaults to using positional indices as keys. When new items are appended or state updates occur (e.g., chat message streaming), Compose fails to correlate unchanged items with their previous compositions, leading to unnecessary recompositions and layout recalculations for all items.
+**Action:** Always supply a stable, unique key (such as `@PrimaryKey val id: Int`) via `items(list, key = { it.id })` for dynamic lists in Jetpack Compose to preserve item identity and eliminate redundant recompositions.

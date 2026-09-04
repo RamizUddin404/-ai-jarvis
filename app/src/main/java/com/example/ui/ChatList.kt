@@ -64,7 +64,10 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Bolt performance optimization: Provide stable primary key (chat.id) to LazyColumn
+        // items. Without explicit keys, Jetpack Compose defaults to positional index keys,
+        // causing unnecessary recomposition of existing items when new messages arrive.
+        items(chatHistory, key = { it.id }) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
