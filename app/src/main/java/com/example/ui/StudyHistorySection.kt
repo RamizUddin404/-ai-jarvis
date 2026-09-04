@@ -103,7 +103,10 @@ fun StudyHistoryModal(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(studySessions) { session ->
+                        // Bolt performance optimization: Provide stable primary key (session.id) to LazyColumn
+                        // items. Without explicit keys, Jetpack Compose defaults to positional index keys,
+                        // causing unnecessary recomposition of existing session cards when history updates.
+                        items(studySessions, key = { it.id }) { session ->
                             StudySessionHistoryItem(
                                 session = session,
                                 onClick = { selectedSessionForDetail = session },
