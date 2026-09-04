@@ -83,10 +83,10 @@ class GeminiRepository {
                 401 -> "Authentication error (HTTP 401): Invalid OpenRouter API Key. Please verify the key in Settings."
                 402 -> "Payment required (HTTP 402): Insufficient OpenRouter credits/balance. Please recharge your account at openrouter.ai."
                 429 -> "Rate limit exceeded (HTTP 429). Please check your OpenRouter API quota limit."
-                else -> "OpenRouter HTTP ${e.code()} Error: ${e.message()}"
+                else -> "An error occurred while processing your request (HTTP ${e.code()})."
             }
         } catch (e: Exception) {
-            "Connection error: ${e.localizedMessage ?: e.message}"
+            "Connection error: Unable to reach the service. Please check your network connection."
         }
     }
 
@@ -116,11 +116,11 @@ class GeminiRepository {
                 401 -> "Invalid API Key (HTTP 401). Please check key characters."
                 402 -> "Insufficient OpenRouter balance / credits (HTTP 402)."
                 429 -> "Rate limit / Quota exceeded (HTTP 429)."
-                else -> "HTTP ${e.code()}: ${e.message()}"
+                else -> "HTTP error ${e.code()} occurred during connection test."
             }
             Result.failure(Exception(msg))
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Network error connecting to OpenRouter"))
+            Result.failure(Exception("Network error connecting to OpenRouter"))
         }
     }
 
