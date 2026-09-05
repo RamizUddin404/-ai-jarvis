@@ -120,7 +120,10 @@ class GeminiRepository {
             }
             Result.failure(Exception(msg))
         } catch (e: Exception) {
-            Result.failure(Exception(e.localizedMessage ?: "Network error connecting to OpenRouter"))
+            val rawMsg = e.localizedMessage ?: e.message ?: "Network error connecting to OpenRouter"
+            // Security: Sanitize error message to prevent API key leakage in exception strings
+            val sanitizedMsg = if (trimmedKey.isNotBlank()) rawMsg.replace(trimmedKey, "***") else rawMsg
+            Result.failure(Exception(sanitizedMsg))
         }
     }
 
