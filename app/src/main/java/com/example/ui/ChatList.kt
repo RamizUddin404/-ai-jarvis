@@ -41,6 +41,19 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
+// Cached ThreadLocal SimpleDateFormat to avoid expensive object creation during Jetpack Compose list item rendering
+private val timeFormatter = ThreadLocal.withInitial {
+    SimpleDateFormat("HH:mm", Locale.getDefault())
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    return try {
+        timeFormatter.get()?.format(Date(timestamp)) ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+}
+
 @Composable
 fun JarvisChatList(
     chatHistory: List<ChatEntity>,
@@ -91,13 +104,9 @@ fun UserMessageCard(
     theme: JarvisBubbleTheme = JarvisBubbleTheme.ELEGANT_DARK,
     modifier: Modifier = Modifier
 ) {
+    // Performance Optimization: Use cached thread-safe formatter instead of re-instantiating SimpleDateFormat
     val timeString = remember(chat.timestamp) {
-        try {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            sdf.format(Date(chat.timestamp))
-        } catch (e: Exception) {
-            ""
-        }
+        formatTimestamp(chat.timestamp)
     }
 
     // Compose transition animations for smooth theme color switching
@@ -270,13 +279,9 @@ fun AiMessageCard(
     theme: JarvisBubbleTheme = JarvisBubbleTheme.ELEGANT_DARK,
     modifier: Modifier = Modifier
 ) {
+    // Performance Optimization: Use cached thread-safe formatter instead of re-instantiating SimpleDateFormat
     val timeString = remember(chat.timestamp) {
-        try {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            sdf.format(Date(chat.timestamp))
-        } catch (e: Exception) {
-            ""
-        }
+        formatTimestamp(chat.timestamp)
     }
 
     // Smooth Compose color transitions for active theme
