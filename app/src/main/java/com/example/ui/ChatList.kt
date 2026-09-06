@@ -64,7 +64,12 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Bolt performance optimization: Provide explicit stable keys using chat.id
+        // to prevent unnecessary re-compositions of unchanged chat cards on list updates.
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
@@ -74,7 +79,7 @@ fun JarvisChatList(
         }
 
         if (isThinking) {
-            item {
+            item(key = "thinking_indicator") {
                 JarvisTypingIndicatorBubble(theme = theme)
             }
         }
