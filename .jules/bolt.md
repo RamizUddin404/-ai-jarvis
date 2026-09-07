@@ -1,0 +1,3 @@
+## 2025-02-20 - Jetpack Compose LazyColumn Keys & Formatter Allocations
+**Learning:** In Compose chat and list screens with streaming responses or state updates, missing `key` and `contentType` parameters in `LazyColumn.items` causes Compose to fall back to positional keys, triggering full list recompositions. Additionally, instantiating `SimpleDateFormat` inside item compositions introduces GC pressure during active scrolling or message streaming.
+**Action:** Always supply stable `key` and `contentType` to `LazyColumn` items in Jetpack Compose lists, and reuse `SimpleDateFormat` via `ThreadLocal` or cached instances.

@@ -41,6 +41,19 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
+// Reusable date formatter to avoid allocating new SimpleDateFormat instances on every item render
+private val chatTimeFormatter = ThreadLocal.withInitial {
+    SimpleDateFormat("HH:mm", Locale.getDefault())
+}
+
+private fun formatChatTimestamp(timestamp: Long): String {
+    return try {
+        chatTimeFormatter.get()?.format(Date(timestamp)) ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+}
+
 @Composable
 fun JarvisChatList(
     chatHistory: List<ChatEntity>,
@@ -64,7 +77,12 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimize LazyColumn recompositions by specifying stable keys and content types
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id },
+            contentType = { chat -> chat.role }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
@@ -74,7 +92,7 @@ fun JarvisChatList(
         }
 
         if (isThinking) {
-            item {
+            item(key = "typing_indicator", contentType = "typing_indicator") {
                 JarvisTypingIndicatorBubble(theme = theme)
             }
         }
@@ -92,12 +110,7 @@ fun UserMessageCard(
     modifier: Modifier = Modifier
 ) {
     val timeString = remember(chat.timestamp) {
-        try {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            sdf.format(Date(chat.timestamp))
-        } catch (e: Exception) {
-            ""
-        }
+        formatChatTimestamp(chat.timestamp)
     }
 
     // Compose transition animations for smooth theme color switching
@@ -271,12 +284,7 @@ fun AiMessageCard(
     modifier: Modifier = Modifier
 ) {
     val timeString = remember(chat.timestamp) {
-        try {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            sdf.format(Date(chat.timestamp))
-        } catch (e: Exception) {
-            ""
-        }
+        formatChatTimestamp(chat.timestamp)
     }
 
     // Smooth Compose color transitions for active theme
