@@ -3,7 +3,7 @@ package com.example.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEmotions
@@ -173,7 +173,10 @@ fun JokeScreen(modifier: Modifier = Modifier, viewModel: JokeViewModel = viewMod
                     .heightIn(max = 200.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(uiState.jokesHistory) { historicJoke ->
+                itemsIndexed(
+                    items = uiState.jokesHistory,
+                    key = { index, joke -> "$index-${joke.hashCode()}" }
+                ) { _, historicJoke ->
                     ElevatedCard(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
