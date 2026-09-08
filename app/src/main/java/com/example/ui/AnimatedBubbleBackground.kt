@@ -72,6 +72,16 @@ fun AnimatedBubbleBackground(
         label = "hologram_rot"
     )
 
+    // Remember PathEffects to prevent allocating native PathEffect and floatArray objects on every draw frame
+    val dash1Intervals = remember { floatArrayOf(12f, 16f) }
+    val dash2Intervals = remember { floatArrayOf(20f, 24f) }
+    val ring1PathEffect = remember(hologramRotation) {
+        PathEffect.dashPathEffect(dash1Intervals, hologramRotation)
+    }
+    val ring2PathEffect = remember(hologramRotation) {
+        PathEffect.dashPathEffect(dash2Intervals, -hologramRotation * 0.7f)
+    }
+
     // Audio boost when speaking/listening
     val rmsNormalized = (audioRms / 10f).coerceIn(0f, 1f)
 
@@ -94,7 +104,8 @@ fun AnimatedBubbleBackground(
         // 2. Draw Subtle AR Holographic Scan Grid / Targeting Rings
         drawHolographicRings(
             theme = theme,
-            rotationDeg = hologramRotation,
+            ring1PathEffect = ring1PathEffect,
+            ring2PathEffect = ring2PathEffect,
             isListening = isListening,
             rms = rmsNormalized
         )
@@ -152,7 +163,8 @@ fun AnimatedBubbleBackground(
 
 private fun DrawScope.drawHolographicRings(
     theme: JarvisBubbleTheme,
-    rotationDeg: Float,
+    ring1PathEffect: PathEffect,
+    ring2PathEffect: PathEffect,
     isListening: Boolean,
     rms: Float
 ) {
@@ -168,7 +180,7 @@ private fun DrawScope.drawHolographicRings(
         center = Offset(centerX, centerY),
         style = Stroke(
             width = 1f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 16f), rotationDeg)
+            pathEffect = ring1PathEffect
         )
     )
 
@@ -178,7 +190,7 @@ private fun DrawScope.drawHolographicRings(
         center = Offset(centerX, centerY),
         style = Stroke(
             width = 1f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 24f), -rotationDeg * 0.7f)
+            pathEffect = ring2PathEffect
         )
     )
 
