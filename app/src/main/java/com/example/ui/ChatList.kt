@@ -64,7 +64,9 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimize list recomposition by providing a unique, stable key based on ChatEntity.id.
+        // This prevents Compose from re-evaluating or re-creating item states during list updates/insertions.
+        items(chatHistory, key = { it.id }) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
