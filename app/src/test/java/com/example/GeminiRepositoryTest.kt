@@ -32,4 +32,21 @@ class GeminiRepositoryTest {
             errorMessage.contains(secretKey)
         )
     }
+
+    @Test
+    fun testGenerateResponseSanitizesApiKeyOnException() = runBlocking {
+        val repository = GeminiRepository()
+        val secretKey = "sk-or-v1-secret123456789key"
+
+        val response = repository.generateResponse(
+            prompt = "Test prompt",
+            userApiKey = secretKey,
+            userModel = "invalid-model-name"
+        )
+
+        assertFalse(
+            "Generate response error output should not leak raw API key",
+            response.contains(secretKey)
+        )
+    }
 }
