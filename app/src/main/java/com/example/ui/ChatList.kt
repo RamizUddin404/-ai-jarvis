@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -157,44 +158,47 @@ fun UserMessageCard(
             ),
             modifier = Modifier
                 .widthIn(max = 290.dp)
-                .drawBehind {
+                // ⚡ Bolt: Use drawWithCache to construct Brushes outside the draw loop, preventing garbage allocations on every animated frame during list scrolling.
+                .drawWithCache {
                     val w = size.width
                     val h = size.height
 
-                    // 1. Dynamic Animated Theme Nebula Gradient Canvas Background
-                    drawRect(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                animatedBgStart.copy(alpha = 0.88f),
-                                animatedPrimary.copy(alpha = 0.22f),
-                                animatedSecondary.copy(alpha = 0.16f),
-                                animatedGlow.copy(alpha = 0.10f)
-                            ),
-                            start = Offset(sin(phaseShift) * w * 0.3f, 0f),
-                            end = Offset(w + cos(phaseShift) * w * 0.3f, h)
+                    val backgroundBrush = Brush.linearGradient(
+                        colors = listOf(
+                            animatedBgStart.copy(alpha = 0.88f),
+                            animatedPrimary.copy(alpha = 0.22f),
+                            animatedSecondary.copy(alpha = 0.16f),
+                            animatedGlow.copy(alpha = 0.10f)
+                        ),
+                        start = Offset(sin(phaseShift) * w * 0.3f, 0f),
+                        end = Offset(w + cos(phaseShift) * w * 0.3f, h)
+                    )
+
+                    val particleGlowBrush = Brush.radialGradient(
+                        colors = listOf(
+                            animatedGlow.copy(alpha = 0.35f * pulseGlow),
+                            Color.Transparent
                         )
                     )
 
-                    // 2. Animated Cosmic Nebula / Particle Dust Specks on Message Background
-                    val particles = 4
-                    for (i in 0 until particles) {
-                        val angle = phaseShift + (i * 1.57f)
-                        val px = (0.2f + 0.25f * i + 0.15f * sin(angle)) * w
-                        val py = (0.3f + 0.2f * i + 0.12f * cos(angle)) * h
-                        val radius = (4f + 3f * sin(angle * 2f)) * density
+                    onDrawBehind {
+                        // 1. Dynamic Animated Theme Nebula Gradient Canvas Background
+                        drawRect(brush = backgroundBrush)
 
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    animatedGlow.copy(alpha = 0.35f * pulseGlow),
-                                    Color.Transparent
-                                ),
-                                center = Offset(px, py),
-                                radius = radius * 2.5f
-                            ),
-                            radius = radius * 2.5f,
-                            center = Offset(px, py)
-                        )
+                        // 2. Animated Cosmic Nebula / Particle Dust Specks on Message Background
+                        val particles = 4
+                        for (i in 0 until particles) {
+                            val angle = phaseShift + (i * 1.57f)
+                            val px = (0.2f + 0.25f * i + 0.15f * sin(angle)) * w
+                            val py = (0.3f + 0.2f * i + 0.12f * cos(angle)) * h
+                            val radius = (4f + 3f * sin(angle * 2f)) * density
+
+                            drawCircle(
+                                brush = particleGlowBrush,
+                                radius = radius * 2.5f,
+                                center = Offset(px, py)
+                            )
+                        }
                     }
                 }
         ) {
@@ -362,37 +366,42 @@ fun AiMessageCard(
             ),
             modifier = Modifier
                 .widthIn(max = 295.dp)
-                .drawBehind {
+                // ⚡ Bolt: Use drawWithCache to pre-allocate Brush objects, avoiding unnecessary allocations on every frame draw.
+                .drawWithCache {
                     val w = size.width
                     val h = size.height
 
-                    // Dynamic Animated AI Theme Background Canvas Gradient
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                animatedGlow.copy(alpha = 0.15f * auraPulse),
-                                animatedBgStart.copy(alpha = 0.85f),
-                                surfaceColor.copy(alpha = 0.95f)
-                            ),
-                            center = Offset(w * 0.15f, h * 0.2f),
-                            radius = w * 1.1f
-                        )
+                    val bgGradient = Brush.radialGradient(
+                        colors = listOf(
+                            animatedGlow.copy(alpha = 0.15f * auraPulse),
+                            animatedBgStart.copy(alpha = 0.85f),
+                            surfaceColor.copy(alpha = 0.95f)
+                        ),
+                        center = Offset(w * 0.15f, h * 0.2f),
+                        radius = w * 1.1f
                     )
 
-                    // Subtle Theme Halo Shimmer Arc along top border
                     val arcX = (0.2f + 0.6f * sin(phaseShift)) * w
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                animatedPrimary.copy(alpha = 0.25f * auraPulse),
-                                Color.Transparent
-                            ),
-                            center = Offset(arcX, 0f),
-                            radius = w * 0.4f
+                    val haloGradient = Brush.radialGradient(
+                        colors = listOf(
+                            animatedPrimary.copy(alpha = 0.25f * auraPulse),
+                            Color.Transparent
                         ),
-                        radius = w * 0.4f,
-                        center = Offset(arcX, 0f)
+                        center = Offset(arcX, 0f),
+                        radius = w * 0.4f
                     )
+
+                    onDrawBehind {
+                        // Dynamic Animated AI Theme Background Canvas Gradient
+                        drawRect(brush = bgGradient)
+
+                        // Subtle Theme Halo Shimmer Arc along top border
+                        drawCircle(
+                            brush = haloGradient,
+                            radius = w * 0.4f,
+                            center = Offset(arcX, 0f)
+                        )
+                    }
                 }
         ) {
             Column(
