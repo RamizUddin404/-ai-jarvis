@@ -64,7 +64,8 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimize LazyColumn re-composition by providing a stable unique key for each item
+        items(chatHistory, key = { it.id }) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)

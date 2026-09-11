@@ -103,7 +103,8 @@ fun StudyHistoryModal(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(studySessions) { session ->
+                        // Optimize LazyColumn re-composition by providing a stable unique key for each study session item
+                        items(studySessions, key = { it.id }) { session ->
                             StudySessionHistoryItem(
                                 session = session,
                                 onClick = { selectedSessionForDetail = session },
