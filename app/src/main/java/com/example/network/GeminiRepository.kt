@@ -86,7 +86,10 @@ class GeminiRepository {
                 else -> "OpenRouter HTTP ${e.code()} Error: ${e.message()}"
             }
         } catch (e: Exception) {
-            "Connection error: ${e.localizedMessage ?: e.message}"
+            val rawMsg = e.localizedMessage ?: e.message ?: "Unknown error"
+            // Security: Sanitize error message to prevent API key leakage in exception strings
+            val sanitizedMsg = if (apiKey.isNotBlank()) rawMsg.replace(apiKey, "***") else rawMsg
+            "Connection error: $sanitizedMsg"
         }
     }
 
