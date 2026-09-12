@@ -103,7 +103,11 @@ fun StudyHistoryModal(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(studySessions) { session ->
+                        // Explicit stable keys prevent unnecessary item recompositions
+                        items(
+                            items = studySessions,
+                            key = { session -> session.id }
+                        ) { session ->
                             StudySessionHistoryItem(
                                 session = session,
                                 onClick = { selectedSessionForDetail = session },
