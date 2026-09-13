@@ -64,7 +64,11 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimize re-composition: key items by stable ChatEntity id to prevent full list re-renders when list changes
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
