@@ -64,7 +64,13 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimization by Bolt: Provide stable keys using entity ID.
+        // This allows Compose to track items across recompositions without re-creating/re-rendering
+        // unchanged cards when new messages are added or thinking state toggles.
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
@@ -74,7 +80,7 @@ fun JarvisChatList(
         }
 
         if (isThinking) {
-            item {
+            item(key = "thinking_indicator") {
                 JarvisTypingIndicatorBubble(theme = theme)
             }
         }
