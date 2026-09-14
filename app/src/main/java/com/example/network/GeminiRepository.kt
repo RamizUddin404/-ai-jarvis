@@ -79,14 +79,17 @@ class GeminiRepository {
             )
             response.choices.firstOrNull()?.message?.content ?: "No response from J.A.R.V.I.S."
         } catch (e: retrofit2.HttpException) {
-            when (e.code()) {
+            val rawMsg = when (e.code()) {
                 401 -> "Authentication error (HTTP 401): Invalid OpenRouter API Key. Please verify the key in Settings."
                 402 -> "Payment required (HTTP 402): Insufficient OpenRouter credits/balance. Please recharge your account at openrouter.ai."
                 429 -> "Rate limit exceeded (HTTP 429). Please check your OpenRouter API quota limit."
                 else -> "OpenRouter HTTP ${e.code()} Error: ${e.message()}"
             }
+            if (apiKey.isNotBlank()) rawMsg.replace(apiKey, "***") else rawMsg
         } catch (e: Exception) {
-            "Connection error: ${e.localizedMessage ?: e.message}"
+            val rawMsg = e.localizedMessage ?: e.message ?: "Unknown connection error"
+            val sanitizedMsg = if (apiKey.isNotBlank()) rawMsg.replace(apiKey, "***") else rawMsg
+            "Connection error: $sanitizedMsg"
         }
     }
 
