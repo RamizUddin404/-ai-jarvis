@@ -83,10 +83,17 @@ class GeminiRepository {
                 401 -> "Authentication error (HTTP 401): Invalid OpenRouter API Key. Please verify the key in Settings."
                 402 -> "Payment required (HTTP 402): Insufficient OpenRouter credits/balance. Please recharge your account at openrouter.ai."
                 429 -> "Rate limit exceeded (HTTP 429). Please check your OpenRouter API quota limit."
-                else -> "OpenRouter HTTP ${e.code()} Error: ${e.message()}"
+                else -> {
+                    val rawMsg = e.message()
+                    val sanitizedMsg = if (apiKey.isNotBlank()) rawMsg.replace(apiKey, "***") else rawMsg
+                    "OpenRouter HTTP ${e.code()} Error: $sanitizedMsg"
+                }
             }
         } catch (e: Exception) {
-            "Connection error: ${e.localizedMessage ?: e.message}"
+            val rawMsg = e.localizedMessage ?: e.message ?: "Unknown error"
+            // Security: Sanitize error message to prevent API key leakage in exception strings
+            val sanitizedMsg = if (apiKey.isNotBlank()) rawMsg.replace(apiKey, "***") else rawMsg
+            "Connection error: $sanitizedMsg"
         }
     }
 
