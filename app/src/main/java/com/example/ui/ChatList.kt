@@ -64,7 +64,13 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimization: Use ChatEntity.id as unique key for LazyColumn items.
+        // This prevents unnecessary recomposition of unchanged chat item bubbles when
+        // new messages are appended to chatHistory or when the list state updates.
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)
@@ -74,7 +80,7 @@ fun JarvisChatList(
         }
 
         if (isThinking) {
-            item {
+            item(key = "typing_indicator") {
                 JarvisTypingIndicatorBubble(theme = theme)
             }
         }
