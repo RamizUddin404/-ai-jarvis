@@ -64,7 +64,11 @@ fun JarvisChatList(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         reverseLayout = false
     ) {
-        items(chatHistory) { chat ->
+        // Optimize LazyColumn re-rendering by specifying stable keys for items
+        items(
+            items = chatHistory,
+            key = { chat -> chat.id }
+        ) { chat ->
             val isUser = chat.role == "user"
             if (isUser) {
                 UserMessageCard(chat = chat, theme = theme)

@@ -1,0 +1,3 @@
+## 2025-05-18 - Compose LazyColumn Stable Item Keys
+**Learning:** In Jetpack Compose, `LazyColumn` items default to using positional index as keys when explicit keys are not provided. When list data changes (such as inserting a new chat message at the bottom or removing a study session), Compose may recompose or re-create items whose positions changed. Supplying explicit stable keys (`key = { it.id }`) allows Compose to maintain item identity and skip recompositions for unmodified items.
+**Action:** Always provide explicit, unique, and stable keys (e.g., entity IDs) for `items(...)` blocks in Jetpack Compose `LazyColumn` or `LazyRow`.
