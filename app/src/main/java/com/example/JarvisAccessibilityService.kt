@@ -30,6 +30,9 @@ class JarvisAccessibilityService : AccessibilityService(), TextToSpeech.OnInitLi
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!isScreenReaderEnabled || event == null || tts == null) return
 
+        // Security: Ignore events from password fields to prevent speech output of sensitive credentials
+        if (event.isPassword || event.source?.isPassword == true) return
+
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_HOVER_ENTER) {
