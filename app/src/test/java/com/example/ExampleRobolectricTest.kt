@@ -82,4 +82,20 @@ class ExampleRobolectricTest {
     assertEquals(com.example.service.CommandIntentType.LAUNCH_APP, parsedBnApp.intentType)
     assertEquals("ইউটিউব", parsedBnApp.actionTarget)
   }
+
+  @Test
+  fun test_accessibility_service_password_security() {
+    val service = JarvisAccessibilityService()
+    service.isScreenReaderEnabled = true
+
+    val passwordEvent = android.view.accessibility.AccessibilityEvent.obtain(
+      android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED
+    )
+    passwordEvent.isPassword = true
+    passwordEvent.text.add("SecretPassword123")
+
+    // Should return safely without processing password speech
+    service.onAccessibilityEvent(passwordEvent)
+    passwordEvent.recycle()
+  }
 }
